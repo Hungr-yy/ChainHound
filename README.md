@@ -66,6 +66,20 @@ Deterministic, explainable, court-ready first; ML strictly advisory and added
 last (Phase 6). Every probabilistic conclusion carries a confidence band and its
 contributing signals. See `docs/DESIGN.md`.
 
+## Credits & prior art
+
+ChainHound stands on established open research and public data sources:
+
+- **[GraphSense](https://github.com/graphsense)** — open cryptoasset analytics
+  platform; informs the clustering and address-graph model.
+- **[blockchain-etl](https://github.com/blockchain-etl)** — open ETL pipelines
+  behind the BigQuery public datasets used by the bulk connector.
+- **Meiklejohn et al.** — the change-analysis heuristics derive from "A Fistful
+  of Bitcoins" (IMC 2013).
+- **[OFAC SDN](https://sanctionssearch.ofac.treas.gov/)** and
+  **[Chainabuse](https://www.chainabuse.com/)** — public sanctions and
+  scam/abuse reports for the label corpus (Phase 2).
+
 ## Scope honesty
 
 Privacy coins (Monero), Lightning/off-chain channels, and off-chain OTC

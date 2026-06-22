@@ -38,3 +38,12 @@ htmlcov/
 *.sqlite
 *.sqlite3
 *.log
+
+# Downloaded / bulk data (label corpora, chain exports, caches)
+data/
+downloads/
+*.parquet
+*.feather
+*.csv.gz
+*.json.gz
+*.tar.gz
