@@ -32,9 +32,9 @@ def sync(
     """Refresh all labels for ``source``; return the number written.
 
     ``text`` lets the caller supply an already-fetched document (offline/cron);
-    otherwise the source fetches it live.
+    otherwise the source loads itself (a single fetch, or a corpus walk).
     """
-    labels = source.parse(text if text is not None else source.fetch())
+    labels = source.parse(text) if text is not None else source.load()
     with connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM label WHERE source = %s", (source.source,))

@@ -42,3 +42,12 @@ class LabelSource(abc.ABC):
     def parse(self, text: str) -> list[Label]:
         """Parse a fetched document into labels. Pure; safe to unit-test."""
         ...
+
+    def load(self) -> list[Label]:
+        """Return all labels for this source.
+
+        Default fetches one document and parses it. Multi-file corpora (e.g. a
+        TagPack repo) override this to walk and aggregate while keeping ``parse``
+        a pure per-document function.
+        """
+        return self.parse(self.fetch())
