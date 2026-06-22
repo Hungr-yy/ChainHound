@@ -1,0 +1,25 @@
+# Synthetic TagPack mirroring the GraphSense format: header-level defaults that
+# each `tags` entry inherits, with optional per-tag overrides. Doubles as a
+# detection-signature regression (trigger + near-miss).
+title: ChainHound Test Pack
+creator: ChainHound tests
+confidence: service_data
+description: synthetic pack for unit tests
+category: exchange
+currency: BTC
+label: TestExchange
+lastmod: 2024-01-01
+source: https://example.com/test
+actor: testexchange
+tags:
+  # Inherit everything from the header.
+  - address: 1ExchangeAddrAAAAAAAAAAAAAAAAAAAAA
+  - address: bc1qexchangeaddrbbbbbbbbbbbbbbbbbbbbbb
+  # Override several fields per-tag (a mixer on a different chain).
+  - address: "0xMixerAddrCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC"
+    currency: ETH
+    category: mixing_service
+    label: TestMixer
+    confidence: forensic
+  # NEAR-MISS: no address -> must not produce a label.
+  - label: dangling entry without an address
