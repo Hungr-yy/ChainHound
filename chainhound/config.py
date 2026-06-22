@@ -10,6 +10,8 @@ class Config:
     gcp_project: str | None = os.getenv("CHAINHOUND_GCP_PROJECT")
     database_url: str | None = os.getenv("CHAINHOUND_DATABASE_URL")
     ofac_url: str | None = os.getenv("CHAINHOUND_OFAC_URL")
+    tagpacks_path: str | None = os.getenv("CHAINHOUND_TAGPACKS_PATH")
+    chainabuse_key: str | None = os.getenv("CHAINHOUND_CHAINABUSE_KEY")
 
     def provider_kwargs(self) -> dict:
         if self.provider in ("bigquery", "bq"):

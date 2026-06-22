@@ -69,25 +69,28 @@ def cmd_initdb(args):
     print("schema initialised")
 
 
-def _label_source(name: str, cfg, url: str | None):
-    if name == "ofac":
-        from .labels.ofac import OFACSource, URL
-        return OFACSource(url=url or cfg.ofac_url or URL)
-    raise SystemExit(f"unknown label source: {name!r}")
-
-
 def cmd_labels_sync(args):
-    from .labels import store
+    from .labels import store, sources
     cfg = config.load()
     if not cfg.database_url:
         sys.exit("set CHAINHOUND_DATABASE_URL to sync labels")
-    source = _label_source(args.source, cfg, args.url)
+
+    names = list(sources.ALL_BULK) if args.all else [args.source]
     text = None
     if args.file:
         with open(args.file, encoding="utf-8") as fh:
             text = fh.read()
-    n = store.sync(cfg.database_url, source, text=text)
-    print(f"synced {n} {args.source} labels")
+
+    total = 0
+    for name in names:
+        source = sources.bulk_source(
+            name, cfg, url=args.url, path=args.path, manifest=args.manifest
+        )
+        n = store.sync(cfg.database_url, source, text=text)
+        total += n
+        print(f"synced {n} {name} labels")
+    if len(names) > 1:
+        print(f"total: {total} labels")
 
 
 def cmd_labels_lookup(args):
@@ -101,6 +104,27 @@ def cmd_labels_lookup(args):
         return
     for lbl in labels:
         print(f"{lbl.name} ({lbl.category}, {lbl.source}, {lbl.confidence})")
+
+
+def cmd_labels_check(args):
+    """On-demand, cache-first lookup against a rate-limited API source."""
+    from .labels import sources
+    cfg = config.load()
+    if not cfg.database_url:
+        sys.exit("set CHAINHOUND_DATABASE_URL to cache on-demand lookups")
+    source = sources.ondemand_source(args.source, cfg)
+    labels = source.check(cfg.database_url, args.chain, args.address)
+    if not labels:
+        print("no labels")
+        return
+    for lbl in labels:
+        print(f"{lbl.name} ({lbl.category}, {lbl.source}, {lbl.confidence})")
+
+
+def cmd_labels_sources(args):
+    from .labels import sources
+    print("bulk (labels sync --source):    " + ", ".join(sources.BULK_SOURCES))
+    print("on-demand (labels check --source): " + ", ".join(sources.ONDEMAND_SOURCES))
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -127,16 +151,28 @@ def build_parser() -> argparse.ArgumentParser:
     lb = sub.add_parser("labels", help="ingest and query attribution labels")
     lb_sub = lb.add_subparsers(dest="labels_cmd", required=True)
 
-    ls = lb_sub.add_parser("sync", help="fetch a source and upsert its labels")
-    ls.add_argument("--source", default="ofac", help="label source (default: ofac)")
+    ls = lb_sub.add_parser("sync", help="fetch a bulk source and upsert its labels")
+    ls.add_argument("--source", default="ofac", help="bulk source (default: ofac)")
+    ls.add_argument("--all", action="store_true", help="sync all default bulk sources")
     ls.add_argument("--file", help="parse a local document instead of fetching")
-    ls.add_argument("--url", help="override the source URL")
+    ls.add_argument("--url", help="override the source URL (ofac)")
+    ls.add_argument("--path", help="corpus path (tagpack tarball or directory)")
+    ls.add_argument("--manifest", help="manifest path (repo source)")
     ls.set_defaults(func=cmd_labels_sync)
 
     ll = lb_sub.add_parser("lookup", help="show labels recorded for an address")
     ll.add_argument("address")
     ll.add_argument("--chain", default="bitcoin")
     ll.set_defaults(func=cmd_labels_lookup)
+
+    lc = lb_sub.add_parser("check", help="on-demand, cached lookup via a rate-limited API")
+    lc.add_argument("address")
+    lc.add_argument("--source", default="chainabuse", help="on-demand source")
+    lc.add_argument("--chain", default="ethereum")
+    lc.set_defaults(func=cmd_labels_check)
+
+    lsr = lb_sub.add_parser("sources", help="list available label sources")
+    lsr.set_defaults(func=cmd_labels_sources)
     return p
 
 
