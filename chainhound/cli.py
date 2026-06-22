@@ -24,8 +24,23 @@ def _provider():
     return get_provider(cfg.provider, **cfg.provider_kwargs())
 
 
+def _label_lookup(cfg):
+    """Build a (chain, address) -> [name] hook from the label store, or None."""
+    if not cfg.database_url:
+        return None
+    from .labels import store
+
+    def lookup(chain: str, address: str) -> list[str]:
+        return [lbl.name for lbl in store.lookup(cfg.database_url, chain, address)]
+
+    return lookup
+
+
 def cmd_triage(args):
-    print(json.dumps(triage_address(_provider(), args.address), indent=2, default=str))
+    cfg = config.load()
+    provider = get_provider(cfg.provider, **cfg.provider_kwargs())
+    report = triage_address(provider, args.address, label_lookup=_label_lookup(cfg))
+    print(json.dumps(report, indent=2, default=str))
 
 
 def cmd_trace(args):

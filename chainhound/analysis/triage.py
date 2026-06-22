@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from datetime import datetime, timezone
+from typing import Callable, Optional
 
 from ..connectors.base import Provider
 from ..models import AddressSummary
@@ -19,8 +20,17 @@ def _fmt_ts(ts: int | None) -> str | None:
     return datetime.fromtimestamp(ts, tz=timezone.utc).strftime("%Y-%m-%d")
 
 
-def triage_address(provider: Provider, address: str) -> dict:
-    """Return a triage report for an address, with simple service-likeness flags."""
+def triage_address(
+    provider: Provider,
+    address: str,
+    label_lookup: Optional[Callable[[str, str], list[str]]] = None,
+) -> dict:
+    """Return a triage report for an address, with simple service-likeness flags.
+
+    ``label_lookup(chain, address)`` is an optional attribution hook (e.g. the
+    label store). It is injected rather than imported so the analysis layer stays
+    decoupled from persistence and offline-testable.
+    """
     summary: AddressSummary | None = provider.get_address_summary(address)
     if summary is None:
         return {"address": address, "found": False}
@@ -29,6 +39,8 @@ def triage_address(provider: Provider, address: str) -> dict:
     report["found"] = True
     report["first_seen"] = _fmt_ts(summary.first_seen)
     report["last_seen"] = _fmt_ts(summary.last_seen)
+    if label_lookup is not None:
+        report["labels"] = label_lookup(provider.chain, address)
 
     # Heuristic flags that suggest a service rather than a personal wallet.
     flags: list[str] = []
