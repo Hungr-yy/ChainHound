@@ -1,0 +1,4 @@
+# Reported scam addresses (comments and blank lines must be ignored).
+0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
+
+0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB

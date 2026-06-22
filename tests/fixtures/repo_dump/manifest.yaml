@@ -1,0 +1,8 @@
+# Manifest for a synthetic address-dump repo (lines format).
+source: testscamrepo
+category: scam
+confidence: Moderate
+currency: ETH
+name: TestScamRepo
+format: lines
+files: "*.txt"
