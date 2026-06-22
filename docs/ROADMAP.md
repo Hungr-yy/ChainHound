@@ -36,6 +36,16 @@ Suggested start: OFAC + TagPacks (authoritative, low-noise) first; add the
 noisier dumps once exposure works. Privacy-coin on/off-ramp endpoints are just
 labels and land here now (the only privacy-coin work possible without Phase 7).
 
+**Progress:**
+- *OFAC SDN — done.* End-to-end slice shipped: `chainhound/labels/` (a
+  `LabelSource` interface, the `OFACSource` loader parsing Treasury `sdn.xml`,
+  and an idempotent `store` that refreshes by source), wired into the CLI
+  (`chainhound labels sync` / `labels lookup`) and into `triage` (labels attach
+  when a database is configured). Tagged `source="ofac"`, `category="sanctioned"`,
+  `Near Certainty`, with the sanctioned entity name for glass-box provenance.
+- *Next:* GraphSense TagPacks on the same `LabelSource`/`store` infrastructure,
+  then the noisier dumps and the on-demand/cached Chainabuse fetcher.
+
 ## Phase 2b — Exposure + pathfinding
 Consumes the labels: counterparty (direct) and indirect (multi-hop) exposure,
 summed into TRM-style rings. Glass-box provenance on every tag.
