@@ -1,0 +1,54 @@
+<?xml version="1.0" standalone="yes"?>
+<sdnList xmlns="http://tempuri.org/sdnList.xsd">
+  <publshInformation>
+    <Publish_Date>06/22/2026</Publish_Date>
+    <Record_Count>3</Record_Count>
+  </publshInformation>
+  <!-- TRIGGER: a single entity with two digital-currency addresses (XBT + ETH). -->
+  <sdnEntry>
+    <uid>10001</uid>
+    <lastName>LAZARUS GROUP</lastName>
+    <sdnType>Entity</sdnType>
+    <programList>
+      <program>DPRK3</program>
+    </programList>
+    <idList>
+      <id>
+        <uid>20001</uid>
+        <idType>Digital Currency Address - XBT</idType>
+        <idNumber>1Q9UMz5aGanLxgqQ2j6t9JNQVSiCwGCi9b</idNumber>
+      </id>
+      <id>
+        <uid>20002</uid>
+        <idType>Digital Currency Address - ETH</idType>
+        <idNumber>0x8576acc5c05d6ce88f4e49bf65bdf0c62f91353c</idNumber>
+      </id>
+    </idList>
+  </sdnEntry>
+  <!-- NEAR-MISS: an entity whose only id is a passport, not a crypto address. -->
+  <sdnEntry>
+    <uid>10002</uid>
+    <firstName>JOHN</firstName>
+    <lastName>DOE</lastName>
+    <sdnType>Individual</sdnType>
+    <programList>
+      <program>SDGT</program>
+    </programList>
+    <idList>
+      <id>
+        <uid>20003</uid>
+        <idType>Passport</idType>
+        <idNumber>X1234567</idNumber>
+      </id>
+    </idList>
+  </sdnEntry>
+  <!-- NEAR-MISS: an entity with no idList at all. -->
+  <sdnEntry>
+    <uid>10003</uid>
+    <lastName>BLANK HOLDINGS LLC</lastName>
+    <sdnType>Entity</sdnType>
+    <programList>
+      <program>SDGT</program>
+    </programList>
+  </sdnEntry>
+</sdnList>
