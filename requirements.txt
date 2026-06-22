@@ -1,0 +1,5 @@
+# core has no hard deps; install extras per backend:
+#   pip install -e ".[live]"      # blockstream connector (requests)
+#   pip install -e ".[bigquery]"  # bigquery connector
+#   pip install -e ".[db]"        # postgres persistence
+#   pip install -e ".[dev]"       # tests
