@@ -81,6 +81,24 @@ CREATE TABLE IF NOT EXISTS label (
     added_at    TIMESTAMPTZ DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_label_addr ON label (chain, address);
+-- Natural key for idempotent upserts of address-scoped labels (Phase 2a
+-- ingestion). Partial: cluster-only labels (address IS NULL) are exempt.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_label_addr_source_name
+    ON label (chain, address, source, name) WHERE address IS NOT NULL;
+-- Refreshed by re-sync so a label's last-seen-from-source is auditable.
+ALTER TABLE label ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
+-- On-demand fetch cache (Chainabuse etc.): repeat lookups for case addresses
+-- are served from here so the rate-limited APIs are never re-hit needlessly.
+CREATE TABLE IF NOT EXISTS fetch_cache (
+    source      TEXT NOT NULL,
+    request_key TEXT NOT NULL,              -- e.g. the queried address
+    body        JSONB,                      -- parsed response payload
+    status      INTEGER,                    -- last HTTP status
+    fetched_at  TIMESTAMPTZ DEFAULT now(),
+    expires_at  TIMESTAMPTZ,                -- NULL = never expires
+    PRIMARY KEY (source, request_key)
+);
 
 -- Cross-chain links: deterministic (bridge API) or inferred (value/time match).
 CREATE TABLE IF NOT EXISTS cross_chain_link (

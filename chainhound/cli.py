@@ -5,6 +5,8 @@ Examples:
     chainhound trace  <txid> --hops 2
     chainhound peel   <txid> --max-hops 30
     chainhound initdb
+    chainhound labels sync --source ofac,tagpacks
+    chainhound labels sync --source chainabuse --address <addr> --chain ethereum
 """
 from __future__ import annotations
 
@@ -14,6 +16,7 @@ import sys
 
 from . import config
 from .connectors import get_provider
+from .loaders import BULK_SOURCES, ON_DEMAND_SOURCES, get_loader
 from .analysis.triage import triage_address
 from .analysis.trace import trace_from_tx
 from .heuristics.peel_chain import trace_peel_chain
@@ -54,6 +57,48 @@ def cmd_initdb(args):
     print("schema initialised")
 
 
+def cmd_labels_sync(args):
+    """Fetch labels from one or more sources and upsert them into the corpus.
+
+    Bulk sources (ofac, tagpacks) download + parse a whole dataset; on-demand
+    sources (chainabuse) require --address and are fetched lazily through the
+    rate-limited, cached fetcher. --dry-run prints the parsed labels without a
+    database (handy offline / without psycopg)."""
+    cfg = config.load()
+    sources = (
+        [s.strip() for s in args.source.split(",") if s.strip()]
+        if args.source else list(BULK_SOURCES)
+    )
+
+    records = []
+    counts = {}
+    for src in sources:
+        if src in ON_DEMAND_SOURCES:
+            if not args.address:
+                sys.exit(f"source {src!r} is on-demand; pass --address")
+            loader = get_loader(
+                src, database_url=None if args.dry_run else cfg.database_url
+            )
+            recs = loader.fetch_for_address(args.address, chain=args.chain)
+        else:
+            recs = get_loader(src).sync()
+        counts[src] = len(recs)
+        records.extend(recs)
+
+    if args.dry_run:
+        print(json.dumps(
+            {"counts": counts, "records": [vars(r) for r in records]},
+            indent=2, default=str,
+        ))
+        return
+
+    if not cfg.database_url:
+        sys.exit("set CHAINHOUND_DATABASE_URL to upsert labels (or use --dry-run)")
+    from .db import upsert_labels
+    written = upsert_labels(cfg.database_url, records)
+    print(json.dumps({"counts": counts, "upserted": written}, indent=2, default=str))
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="chainhound", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -74,6 +119,21 @@ def build_parser() -> argparse.ArgumentParser:
 
     db = sub.add_parser("initdb", help="create the Postgres schema")
     db.set_defaults(func=cmd_initdb)
+
+    lb = sub.add_parser("labels", help="manage the attribution label corpus")
+    lbsub = lb.add_subparsers(dest="labels_cmd", required=True)
+    sy = lbsub.add_parser("sync", help="fetch + upsert labels from sources")
+    sy.add_argument(
+        "--source",
+        help="comma-separated sources (default: bulk sources "
+             f"{','.join(BULK_SOURCES)}); on-demand: {','.join(ON_DEMAND_SOURCES)}",
+    )
+    sy.add_argument("--address", help="address to query for on-demand sources")
+    sy.add_argument("--chain", default="unknown",
+                    help="chain for on-demand address lookups")
+    sy.add_argument("--dry-run", action="store_true",
+                    help="print parsed labels as JSON; no database needed")
+    sy.set_defaults(func=cmd_labels_sync)
     return p
 
 

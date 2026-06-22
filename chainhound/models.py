@@ -106,6 +106,31 @@ class AddressSummary:
     labels: list[str] = field(default_factory=list)
 
 
+@dataclass
+class LabelRecord:
+    """One attribution tag, normalized by a loader before it hits the `label`
+    table. The loader equivalent of the canonical types a connector emits: every
+    label source (OFAC, GraphSense TagPacks, Chainabuse) is reduced to this shape
+    so ingestion and upsert never see source-specific structure.
+
+    Carries its own provenance — `source` plus a `confidence` band — so every
+    tag stays glass-box auditable (DESIGN.md "Glass-box provenance").
+    """
+    chain: str
+    address: str
+    name: str                               # 'OFAC SDN', 'Binance', ...
+    source: str                             # 'ofac' | 'tagpacks' | 'chainabuse'
+    category: Optional[str] = None          # 'sanctioned','exchange','mixer','scam',...
+    confidence: str = "High"                # one of CONFIDENCE_BANDS' labels
+    cluster_id: Optional[int] = None        # set when the tag pins to a cluster
+
+    @property
+    def upsert_key(self) -> tuple[str, str, str, str]:
+        """The natural key the `label` upsert dedups on (matches the partial
+        unique index on `(chain, address, source, name)`)."""
+        return (self.chain, self.address, self.source, self.name)
+
+
 # Confidence bands, shared by every probabilistic conclusion the engine emits.
 # Mirrors TRM's "Near Certainty -> Low/Moderate" scale.
 CONFIDENCE_BANDS: list[tuple[float, str]] = [
