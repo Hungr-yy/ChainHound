@@ -82,6 +82,17 @@ CREATE TABLE IF NOT EXISTS label (
 );
 CREATE INDEX IF NOT EXISTS idx_label_addr ON label (chain, address);
 
+-- Cache of raw on-demand/rate-limited API responses (Chainabuse, etc.) so
+-- repeated lookups of the same address never re-hit the upstream API.
+CREATE TABLE IF NOT EXISTS label_cache (
+    source     TEXT NOT NULL,
+    chain      TEXT NOT NULL,
+    address    TEXT NOT NULL,
+    raw        TEXT,                          -- raw response document
+    fetched_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (source, chain, address)
+);
+
 -- Cross-chain links: deterministic (bridge API) or inferred (value/time match).
 CREATE TABLE IF NOT EXISTS cross_chain_link (
     id             BIGSERIAL PRIMARY KEY,

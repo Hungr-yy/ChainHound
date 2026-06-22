@@ -63,3 +63,78 @@ def lookup(
             cur.execute(_SELECT, (chain, address))
             rows = cur.fetchall()
     return [Label(*row) for row in rows]
+
+
+# --- on-demand cache + per-address label persistence -------------------------
+
+_CACHE_GET = (
+    "SELECT raw FROM label_cache "
+    "WHERE source = %s AND chain = %s AND address = %s "
+    "AND fetched_at > now() - make_interval(secs => %s)"
+)
+_CACHE_PUT = (
+    "INSERT INTO label_cache (source, chain, address, raw, fetched_at) "
+    "VALUES (%s, %s, %s, %s, now()) "
+    "ON CONFLICT (source, chain, address) "
+    "DO UPDATE SET raw = EXCLUDED.raw, fetched_at = now()"
+)
+
+
+def cache_get(
+    database_url: str,
+    source: str,
+    chain: str,
+    address: str,
+    max_age: int,
+    *,
+    connect: Callable = db.connect,
+) -> Optional[str]:
+    """Return the cached raw response if present and younger than ``max_age`` seconds."""
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(_CACHE_GET, (source, chain, address, max_age))
+            row = cur.fetchone()
+    return row[0] if row else None
+
+
+def cache_put(
+    database_url: str,
+    source: str,
+    chain: str,
+    address: str,
+    raw: str,
+    *,
+    connect: Callable = db.connect,
+) -> None:
+    """Store/refresh a raw response for ``(source, chain, address)``."""
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(_CACHE_PUT, (source, chain, address, raw))
+        conn.commit()
+
+
+def replace_address(
+    database_url: str,
+    source: str,
+    chain: str,
+    address: str,
+    labels: list[Label],
+    *,
+    connect: Callable = db.connect,
+) -> None:
+    """Replace this source's labels for one address (idempotent per re-check)."""
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM label WHERE source = %s AND chain = %s AND address = %s",
+                (source, chain, address),
+            )
+            if labels:
+                cur.executemany(
+                    _INSERT,
+                    [
+                        (l.chain, l.address, l.name, l.category, l.source, l.confidence)
+                        for l in labels
+                    ],
+                )
+        conn.commit()
