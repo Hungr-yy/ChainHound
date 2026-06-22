@@ -37,14 +37,29 @@ noisier dumps once exposure works. Privacy-coin on/off-ramp endpoints are just
 labels and land here now (the only privacy-coin work possible without Phase 7).
 
 **Progress:**
-- *OFAC SDN — done.* End-to-end slice shipped: `chainhound/labels/` (a
-  `LabelSource` interface, the `OFACSource` loader parsing Treasury `sdn.xml`,
-  and an idempotent `store` that refreshes by source), wired into the CLI
-  (`chainhound labels sync` / `labels lookup`) and into `triage` (labels attach
-  when a database is configured). Tagged `source="ofac"`, `category="sanctioned"`,
-  `Near Certainty`, with the sanctioned entity name for glass-box provenance.
-- *Next:* GraphSense TagPacks on the same `LabelSource`/`store` infrastructure,
-  then the noisier dumps and the on-demand/cached Chainabuse fetcher.
+- *OFAC SDN — done.* End-to-end slice: `chainhound/labels/` (a `LabelSource`
+  interface, the `OFACSource` loader parsing Treasury `sdn.xml`, and an idempotent
+  `store` that refreshes by source), wired into the CLI and into `triage`. Tagged
+  `source="ofac"`, `category="sanctioned"`, `Near Certainty`, with the sanctioned
+  entity name for glass-box provenance.
+- *GraphSense TagPacks — done.* `TagPackSource` ingests the local TagPack corpus
+  (`data/labels/tagpacks.tar.gz`, ~524k tags), inheriting header defaults per tag,
+  mapping the GraphSense confidence taxonomy to bands and normalizing categories
+  (`mixing_service`→`mixer`). **Privacy-coin on/off-ramps land here** via the
+  corpus's XMR/ZEC exchange + mixing labels (the only privacy-coin work possible
+  pre-Phase 7).
+- *On-demand/cached mode — done.* `labels/ondemand.py` provides the
+  DESIGN-mandated fetcher: a token-bucket limiter, exponential backoff, and a
+  `label_cache` table so repeated lookups never re-hit the API. **Chainabuse**
+  (`ChainabuseSource`) is the first consumer, key-gated via
+  `CHAINHOUND_CHAINABUSE_KEY` and reached by `chainhound labels check`.
+- *Generic dump loader — done.* `RepoSource` ingests any address-dump repo
+  (scam/sanction lists, Etherscan name-tag dumps) from a small YAML manifest
+  (lines or csv), so adding a vetted dump is data, not code.
+- *Sources & CLI.* `labels/sources.py` registry; `labels sync --source|--all`,
+  `labels check`, `labels lookup`, `labels sources`.
+- *Remaining (ongoing):* select/vet specific community dump repos; run bulk syncs
+  on a cadence (cron + idempotent re-pull — no daemon, per scope).
 
 ## Phase 2b — Exposure + pathfinding
 Consumes the labels: counterparty (direct) and indirect (multi-hop) exposure,

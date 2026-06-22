@@ -105,6 +105,9 @@ Loaded by a batch job with idempotent upserts; re-pulls dedup.
 
 Wrapped by a shared fetcher with a token-bucket limiter, exponential backoff on
 429, and a local cache table so repeated lookups never re-hit the API.
+*Implemented* in `chainhound/labels/ondemand.py` (`TokenBucket`,
+`fetch_with_backoff`, `OnDemandSource`) backed by the `label_cache` table;
+`ChainabuseSource` is the first consumer (`chainhound labels check`).
 
 Implication: "ingest all sources" is safe — the heavy sources are downloads and
 the API sources are lazy, so nothing gets hammered.
