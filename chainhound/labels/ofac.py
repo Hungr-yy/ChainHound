@@ -13,6 +13,7 @@ import xml.etree.ElementTree as ET
 from typing import Optional
 
 from .base import Label, LabelSource
+from .chains import currency_to_chain
 
 try:
     import requests
@@ -24,27 +25,6 @@ logger = logging.getLogger(__name__)
 URL = "https://www.treasury.gov/ofac/downloads/sdn.xml"
 
 _ID_TYPE_PREFIX = "Digital Currency Address - "
-
-# Map the SDN currency code to a ChainHound chain name. Unknown codes fall back
-# to the lowercased code so a newly sanctioned asset never crashes a sync.
-CURRENCY_TO_CHAIN = {
-    "XBT": "bitcoin",
-    "ETH": "ethereum",
-    "LTC": "litecoin",
-    "BCH": "bitcoin-cash",
-    "XMR": "monero",
-    "ZEC": "zcash",
-    "DASH": "dash",
-    "BTG": "bitcoin-gold",
-    "ETC": "ethereum-classic",
-    "BSV": "bitcoin-sv",
-    "XVG": "verge",
-    "XRP": "ripple",
-    "TRX": "tron",
-    "ARB": "arbitrum",
-    "USDT": "ethereum",
-    "USDC": "ethereum",
-}
 
 
 class OFACSource(LabelSource):
@@ -79,7 +59,7 @@ class OFACSource(LabelSource):
                 if not address:
                     continue
                 currency = id_type[len(_ID_TYPE_PREFIX) :].strip()
-                chain = CURRENCY_TO_CHAIN.get(currency, currency.lower())
+                chain = currency_to_chain(currency)
                 labels.append(
                     Label(
                         chain=chain,
