@@ -54,6 +54,40 @@ def cmd_initdb(args):
     print("schema initialised")
 
 
+def _label_source(name: str, cfg, url: str | None):
+    if name == "ofac":
+        from .labels.ofac import OFACSource, URL
+        return OFACSource(url=url or cfg.ofac_url or URL)
+    raise SystemExit(f"unknown label source: {name!r}")
+
+
+def cmd_labels_sync(args):
+    from .labels import store
+    cfg = config.load()
+    if not cfg.database_url:
+        sys.exit("set CHAINHOUND_DATABASE_URL to sync labels")
+    source = _label_source(args.source, cfg, args.url)
+    text = None
+    if args.file:
+        with open(args.file, encoding="utf-8") as fh:
+            text = fh.read()
+    n = store.sync(cfg.database_url, source, text=text)
+    print(f"synced {n} {args.source} labels")
+
+
+def cmd_labels_lookup(args):
+    from .labels import store
+    cfg = config.load()
+    if not cfg.database_url:
+        sys.exit("set CHAINHOUND_DATABASE_URL to look up labels")
+    labels = store.lookup(cfg.database_url, args.chain, args.address)
+    if not labels:
+        print("no labels")
+        return
+    for lbl in labels:
+        print(f"{lbl.name} ({lbl.category}, {lbl.source}, {lbl.confidence})")
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="chainhound", description=__doc__)
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -74,6 +108,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     db = sub.add_parser("initdb", help="create the Postgres schema")
     db.set_defaults(func=cmd_initdb)
+
+    lb = sub.add_parser("labels", help="ingest and query attribution labels")
+    lb_sub = lb.add_subparsers(dest="labels_cmd", required=True)
+
+    ls = lb_sub.add_parser("sync", help="fetch a source and upsert its labels")
+    ls.add_argument("--source", default="ofac", help="label source (default: ofac)")
+    ls.add_argument("--file", help="parse a local document instead of fetching")
+    ls.add_argument("--url", help="override the source URL")
+    ls.set_defaults(func=cmd_labels_sync)
+
+    ll = lb_sub.add_parser("lookup", help="show labels recorded for an address")
+    ll.add_argument("address")
+    ll.add_argument("--chain", default="bitcoin")
+    ll.set_defaults(func=cmd_labels_lookup)
     return p
 
 
