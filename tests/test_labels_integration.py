@@ -125,21 +125,17 @@ def test_attribution_loop_ofac_to_triage(db_url):
     assert any("OFAC SDN" in name for name in report["labels"])
 
 
-def test_cache_upsert_and_make_interval(db_url):
-    # Exercises ON CONFLICT (source,chain,address) and make_interval(secs => %s).
-    store.cache_put(db_url, "chainabuse", "ethereum", "0xABC", '{"reports":[]}')
-    assert (
-        store.cache_get(db_url, "chainabuse", "ethereum", "0xABC", 3600)
-        == '{"reports":[]}'
-    )
-    # max_age 0 -> the row is "older than now()" -> treated as stale.
-    assert store.cache_get(db_url, "chainabuse", "ethereum", "0xABC", 0) is None
+def test_cache_upsert_and_expiry(db_url):
+    # Exercises the JSONB body round-trip, ON CONFLICT (source,request_key)
+    # upsert, and the expires_at freshness check.
+    store.cache_put(db_url, "chainabuse", "ethereum:0xABC", {"reports": []}, ttl_seconds=3600)
+    assert store.cache_get(db_url, "chainabuse", "ethereum:0xABC") == {"reports": []}
+    # An already-expired entry reads as a miss.
+    store.cache_put(db_url, "chainabuse", "ethereum:0xEXP", {"x": 1}, ttl_seconds=-1)
+    assert store.cache_get(db_url, "chainabuse", "ethereum:0xEXP") is None
     # Second put upserts the same key rather than erroring/duplicating.
-    store.cache_put(db_url, "chainabuse", "ethereum", "0xABC", '{"reports":[1]}')
-    assert (
-        store.cache_get(db_url, "chainabuse", "ethereum", "0xABC", 3600)
-        == '{"reports":[1]}'
-    )
+    store.cache_put(db_url, "chainabuse", "ethereum:0xABC", {"reports": [1]}, ttl_seconds=3600)
+    assert store.cache_get(db_url, "chainabuse", "ethereum:0xABC") == {"reports": [1]}
 
 
 def test_replace_address_is_idempotent(db_url):

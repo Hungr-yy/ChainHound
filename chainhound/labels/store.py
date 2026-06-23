@@ -8,6 +8,7 @@ tests.
 """
 from __future__ import annotations
 
+import json
 from typing import Callable, Optional
 
 from .. import db
@@ -76,51 +77,58 @@ def lookup(
     return [Label(*row) for row in rows]
 
 
-# --- on-demand cache + per-address label persistence -------------------------
+# --- on-demand fetch cache + per-address label persistence -------------------
 
 _CACHE_GET = (
-    "SELECT raw FROM label_cache "
-    "WHERE source = %s AND chain = %s AND address = %s "
-    "AND fetched_at > now() - make_interval(secs => %s)"
+    "SELECT body FROM fetch_cache "
+    "WHERE source = %s AND request_key = %s "
+    "AND (expires_at IS NULL OR expires_at > now())"
 )
 _CACHE_PUT = (
-    "INSERT INTO label_cache (source, chain, address, raw, fetched_at) "
-    "VALUES (%s, %s, %s, %s, now()) "
-    "ON CONFLICT (source, chain, address) "
-    "DO UPDATE SET raw = EXCLUDED.raw, fetched_at = now()"
+    "INSERT INTO fetch_cache (source, request_key, body, status, fetched_at, expires_at) "
+    "VALUES (%s, %s, %s, %s, now(), now() + CAST(%s AS INTERVAL)) "
+    "ON CONFLICT (source, request_key) "
+    "DO UPDATE SET body = EXCLUDED.body, status = EXCLUDED.status, "
+    "fetched_at = now(), expires_at = EXCLUDED.expires_at"
 )
 
 
 def cache_get(
     database_url: str,
     source: str,
-    chain: str,
-    address: str,
-    max_age: int,
+    request_key: str,
     *,
     connect: Callable = db.connect,
-) -> Optional[str]:
-    """Return the cached raw response if present and younger than ``max_age`` seconds."""
+) -> Optional[dict]:
+    """Return a cached response body for ``(source, request_key)`` if unexpired."""
     with connect(database_url) as conn:
         with conn.cursor() as cur:
-            cur.execute(_CACHE_GET, (source, chain, address, max_age))
+            cur.execute(_CACHE_GET, (source, request_key))
             row = cur.fetchone()
-    return row[0] if row else None
+    if not row or row[0] is None:
+        return None
+    body = row[0]
+    # psycopg returns JSONB pre-parsed; tolerate a text round-trip too.
+    return json.loads(body) if isinstance(body, str) else body
 
 
 def cache_put(
     database_url: str,
     source: str,
-    chain: str,
-    address: str,
-    raw: str,
+    request_key: str,
+    body: dict,
+    status: int = 200,
+    ttl_seconds: Optional[int] = None,
     *,
     connect: Callable = db.connect,
 ) -> None:
-    """Store/refresh a raw response for ``(source, chain, address)``."""
+    """Store/refresh a cached response. ``ttl_seconds=None`` caches forever."""
+    expires = None if ttl_seconds is None else f"{int(ttl_seconds)} seconds"
     with connect(database_url) as conn:
         with conn.cursor() as cur:
-            cur.execute(_CACHE_PUT, (source, chain, address, raw))
+            cur.execute(
+                _CACHE_PUT, (source, request_key, json.dumps(body), status, expires)
+            )
         conn.commit()
 
 

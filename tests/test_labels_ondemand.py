@@ -96,17 +96,17 @@ class _FakeConn:
 class _Src(OnDemandSource):
     source = "test"
 
-    def __init__(self, raw, **kw):
+    def __init__(self, value, **kw):
         super().__init__(**kw)
-        self._raw = raw
+        self._value = value
         self.fetched = 0
 
     def _fetch(self, chain, address):
         self.fetched += 1
-        return self._raw
+        return {"v": self._value}      # parsed JSON body (dict)
 
     def parse(self, raw, chain, address):
-        return [Label(chain, address, f"name:{raw}", "test", self.source, "Moderate")]
+        return [Label(chain, address, f"name:{raw['v']}", "test", self.source, "Moderate")]
 
 
 def _fast_bucket():
@@ -114,11 +114,12 @@ def _fast_bucket():
 
 
 def test_cache_hit_short_circuits_fetch():
-    conn = _FakeConn(fetchone_val=("cached-raw",))   # cache returns a row
+    # JSONB cache returns a pre-parsed dict body.
+    conn = _FakeConn(fetchone_val=({"v": "cached"},))
     src = _Src("fresh", bucket=_fast_bucket(), sleeper=lambda s: None)
     labels = src.check("pg://x", "bitcoin", "1AAA", connect=lambda _u: conn)
     assert src.fetched == 0                  # never hit the network
-    assert labels[0].name == "name:cached-raw"
+    assert labels[0].name == "name:cached"
 
 
 def test_cache_miss_fetches_and_persists():
@@ -128,5 +129,5 @@ def test_cache_miss_fetches_and_persists():
     assert src.fetched == 1
     assert labels[0].name == "name:fresh"
     sql_blob = " ".join(c[0] for c in conn.cursor_obj.calls)
-    assert "label_cache" in sql_blob         # wrote the cache
+    assert "fetch_cache" in sql_blob         # wrote the cache
     assert "INSERT INTO label" in sql_blob    # persisted the labels

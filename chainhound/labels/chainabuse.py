@@ -44,7 +44,7 @@ class ChainabuseSource(OnDemandSource):
         self.api_key = api_key
         self.timeout = timeout
 
-    def _fetch(self, chain: str, address: str) -> str:  # pragma: no cover - needs a key
+    def _fetch(self, chain: str, address: str) -> dict:  # pragma: no cover - needs a key
         if requests is None:
             raise RuntimeError("install 'requests' to query Chainabuse")
         if not self.api_key:
@@ -59,9 +59,9 @@ class ChainabuseSource(OnDemandSource):
         if resp.status_code == 429:
             raise RateLimited("chainabuse rate limit")
         resp.raise_for_status()
-        return resp.text
+        return resp.json()
 
-    def parse(self, raw: str, chain: str, address: str) -> list[Label]:
+    def parse(self, raw, chain: str, address: str) -> list[Label]:
         data = json.loads(raw) if isinstance(raw, str) else raw
         if isinstance(data, dict):
             reports = data.get("reports") or data.get("results") or data.get("data") or []

@@ -90,15 +90,18 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_label_addr_source_name
 -- Bumped on every re-sync so a label's last-seen-from-source is auditable.
 ALTER TABLE label ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
 
--- Cache of raw on-demand/rate-limited API responses (Chainabuse, etc.) so
--- repeated lookups of the same address never re-hit the upstream API.
-CREATE TABLE IF NOT EXISTS label_cache (
-    source     TEXT NOT NULL,
-    chain      TEXT NOT NULL,
-    address    TEXT NOT NULL,
-    raw        TEXT,                          -- raw response document
-    fetched_at TIMESTAMPTZ DEFAULT now(),
-    PRIMARY KEY (source, chain, address)
+-- On-demand fetch cache (Chainabuse etc.): repeat lookups for case addresses are
+-- served from here so the rate-limited APIs are never re-hit needlessly. Keyed
+-- by an opaque request_key (e.g. "chain:address") so it generalizes beyond
+-- per-address lookups; body is the parsed JSON payload.
+CREATE TABLE IF NOT EXISTS fetch_cache (
+    source      TEXT NOT NULL,
+    request_key TEXT NOT NULL,              -- e.g. the queried address
+    body        JSONB,                      -- parsed response payload
+    status      INTEGER,                    -- last HTTP status
+    fetched_at  TIMESTAMPTZ DEFAULT now(),
+    expires_at  TIMESTAMPTZ,                -- NULL = never expires
+    PRIMARY KEY (source, request_key)
 );
 
 -- Cross-chain links: deterministic (bridge API) or inferred (value/time match).

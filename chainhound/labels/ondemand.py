@@ -90,14 +90,18 @@ class OnDemandSource(abc.ABC):
         self.sleeper = sleeper
 
     @abc.abstractmethod
-    def _fetch(self, chain: str, address: str) -> str:
-        """Return the raw API response text. Raise ``RateLimited`` to retry."""
+    def _fetch(self, chain: str, address: str) -> dict:
+        """Return the parsed API response (JSON). Raise ``RateLimited`` to retry."""
         ...
 
     @abc.abstractmethod
-    def parse(self, raw: str, chain: str, address: str) -> list[Label]:
-        """Parse a raw response into labels. Pure; safe to unit-test."""
+    def parse(self, raw: dict, chain: str, address: str) -> list[Label]:
+        """Parse a response body into labels. Pure; safe to unit-test."""
         ...
+
+    def request_key(self, chain: str, address: str) -> str:
+        """Opaque cache key for this lookup (override for non-address queries)."""
+        return f"{chain}:{address}"
 
     def check(
         self,
@@ -108,21 +112,23 @@ class OnDemandSource(abc.ABC):
         connect: Callable = db.connect,
     ) -> list[Label]:
         """Return labels for an address, fetching (rate-limited) only on cache miss."""
-        raw = store.cache_get(
-            database_url, self.source, chain, address, self.cache_ttl, connect=connect
-        )
-        if raw is not None:
-            return self.parse(raw, chain, address)
+        key = self.request_key(chain, address)
+        body = store.cache_get(database_url, self.source, key, connect=connect)
+        if body is not None:
+            return self.parse(body, chain, address)
 
         self.bucket.acquire()
-        raw = fetch_with_backoff(
+        body = fetch_with_backoff(
             lambda: self._fetch(chain, address),
             retries=self.retries,
             base_delay=self.base_delay,
             sleeper=self.sleeper,
         )
-        store.cache_put(database_url, self.source, chain, address, raw, connect=connect)
-        labels = self.parse(raw, chain, address)
+        store.cache_put(
+            database_url, self.source, key, body,
+            ttl_seconds=self.cache_ttl, connect=connect,
+        )
+        labels = self.parse(body, chain, address)
         store.replace_address(
             database_url, self.source, chain, address, labels, connect=connect
         )
