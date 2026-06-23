@@ -147,12 +147,16 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_graph_element_case_el
     ON graph_element (case_id, element_id);
 
 -- Monitoring: addresses under watch and fired detector alerts (Phase 5).
+-- ``baseline`` is the last observed address snapshot; detectors compare the
+-- current state against it, then it is rolled forward after each check.
 CREATE TABLE IF NOT EXISTS watch (
-    id          BIGSERIAL PRIMARY KEY,
-    chain       TEXT NOT NULL,
-    address     TEXT NOT NULL,
-    case_id     BIGINT REFERENCES investigation(case_id) ON DELETE SET NULL,
-    created_at  TIMESTAMPTZ DEFAULT now()
+    id              BIGSERIAL PRIMARY KEY,
+    chain           TEXT NOT NULL,
+    address         TEXT NOT NULL,
+    case_id         BIGINT REFERENCES investigation(case_id) ON DELETE SET NULL,
+    baseline        JSONB,
+    last_checked_at TIMESTAMPTZ,
+    created_at      TIMESTAMPTZ DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS alert (
