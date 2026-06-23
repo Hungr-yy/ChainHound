@@ -25,8 +25,18 @@ class PeelHop:
 
 
 @dataclass
+class PeelCashOut:
+    """The destination of a trailing single-output sweep that forwards the peeled
+    remainder in one move (typically a deposit/bridge) — the chain's cash-out."""
+    txid: str
+    address: Optional[str]
+    value: int
+
+
+@dataclass
 class PeelChain:
     hops: list[PeelHop] = field(default_factory=list)
+    cash_out: Optional[PeelCashOut] = None
 
     @property
     def length(self) -> int:
@@ -69,6 +79,14 @@ def trace_peel_chain(
         seen.add(txid)
         tx = get_tx(txid)
         if tx is None:
+            break
+
+        # Trailing full-balance sweep: once we are inside a peel, a single-output
+        # tx forwards the whole remainder (no change) — that destination is the
+        # cash-out. Record it and stop (a sweep is not itself a peel hop).
+        if chain.hops and len(tx.outputs) == 1:
+            o = tx.outputs[0]
+            chain.cash_out = PeelCashOut(tx.txid, o.address, o.value)
             break
 
         verdict = analyze_change(tx)
