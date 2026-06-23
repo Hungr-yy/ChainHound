@@ -136,6 +136,39 @@ required, and several chains are now paywalled — use Routescan/OKLink/Blocksco
 where needed). Internal txns + traces, ERC-20/721 transfers, token swaps,
 contract-function decoding via Sourcify + 4byte. On-demand fetch + cache + backoff.
 
+Runs in two stages: Stage 1 (connector availability research + canonical-model
+fit) is approved; Stage 2 builds incrementally. **Default backend: keyless
+Routescan** (Etherscan V2 / Blockscout via base-url + key); BigQuery deferred as
+the opt-in bulk backend (its data is free but queries are billed per-TiB-scanned
+and per-address point lookups are the wrong pattern for a warehouse).
+
+**Progress:**
+- *Slice 1 — minimal EVM Provider (native value) — done.* `connectors/evm.py`
+  `EvmProvider` implements the `Provider` ABC over the Etherscan-compatible REST
+  shape, defaulting to keyless Routescan; native value transfers normalize to
+  single-transfer `Transaction`s (failed/zero-value dropped), EOA-vs-contract
+  handles EIP-7702 delegation, and rate-limit/backoff reuse `labels/ondemand`
+  (no new throttle code). Wired into `get_provider` (`ethereum`/`eth`/`evm`) +
+  config (`CHAINHOUND_EVM_PROVIDER_URL`/`ETHERSCAN_KEY`/`EVM_CHAIN_ID`).
+  - **Model fit holds:** the offline `test_exposure_works_on_evm_with_zero_engine
+    _changes` proves `compute_exposure` runs on EVM-normalized data with **zero**
+    edits to `exposure.py` (the load-bearing acceptance). 6 offline normalization
+    tests from captured Routescan JSON; full suite 47 passed.
+  - *Live (2026-06-23):* `triage` on a real ETH address via keyless Routescan
+    returned a correct summary (EOA, balance, windowed tx_count, first/last seen).
+    A live *labeled* exposure ring on ETH was not staged — OFAC's ETH entries are
+    mostly high-activity Tornado Cash contracts and the synced GraphSense ETH tags
+    didn't intersect the sampled addresses' recent-tx windows (a label-coverage /
+    staging gap, not an engine issue; the identical code produced a real
+    `sanctioned` ring on the BTC HYDRA proof).
+- *Known limitation:* `get_address_transactions` reads the recent tx window
+  (explorer pagination), and `tx_count`/`first_seen` are over that window — same
+  shape as the BTC connector. `trace_from_tx`'s change-trail is UTXO-specific;
+  meaningful EVM forward-trace needs the small account-model guard noted in the
+  plan (deferred).
+- *Next slices:* ERC-20/721 (+ `asset` on `TxIO`, per-asset rings) → internal
+  txns/traces → Sourcify/4byte contract decoding.
+
 ## Phase 4 — Cross-chain matching  *(highest real-world value)*
 Two deterministic tiers, both stored in `cross_chain_link` with method + confidence:
 - **`api`** — read a bridge explorer for the src↔dst pair (Wormholescan,
