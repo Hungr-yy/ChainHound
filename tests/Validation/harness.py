@@ -24,6 +24,10 @@ from chainhound.analysis.triage import triage_address
 from chainhound.heuristics.change_analysis import analyze_change
 from chainhound.heuristics.peel_chain import trace_peel_chain
 from chainhound.heuristics.clustering import cluster_addresses
+from chainhound.analysis.exposure import compute_exposure
+from chainhound.analysis.decode import decode_input
+from chainhound.labels.base import Label
+from chainhound.models import AddressType, normalize_address
 
 # Verdicts
 PASS = "PASS"
@@ -45,6 +49,10 @@ A3_TERMINAL = "bc1qr5kgpg5ddn8tac254s3f0xjtj4749xayq6ua3y"
 A3_TERMINAL_SATS = 5_350_000_000          # 53.5 BTC
 A3_TOLERANCE_SATS = 100_000_000           # ± 1 BTC
 DUST_SATS = 100_000                       # "significant" outbound spend floor
+
+E1_ADDR = "0x93edbe2231d25066be8daa86d7b18251a8b2ed91"
+E1_TX = "0x088e6ac68ba7ced9ed20e2207dcf928799b44823eeba50dbcfa51940cbe305fd"
+E2_TX = "0x84d4f4354f47beb35ac82c9fef740ece90cd57efdf771ba1d88690d37aab95ec"
 
 
 @dataclass
@@ -214,6 +222,129 @@ def case_a4(btc) -> CaseResult:
     )
 
 
+# --- Tier B (coverage-dependent) ---------------------------------------------
+
+def case_b1() -> CaseResult:
+    # Verdict is COVERAGE-MISS by design: CASES.md does not name the exchange
+    # deposit address and the corpus does not carry it, so the course's specific
+    # "over a third to an exchange" claim cannot be confirmed against ground truth.
+    # Recording the gap is more honest (and more useful) than a near-circular pass.
+    return CaseResult(
+        "B1", COVERAGE_MISS, "exchange exposure from the hack origin",
+        expected="course: 'over a third of the stolen BTC went to an exchange'",
+        actual="unconfirmable — exchange deposit address not in CASES.md and not in the label corpus",
+        detail=[
+            "Tier B is coverage-dependent; this records what the corpus would need "
+            "(the exchange's labelled deposit address) to validate the claim.",
+            "Engine arithmetic is checked separately by the B1-math DIAGNOSTIC below "
+            "(seeded proxy — explicitly NOT a course verdict).",
+        ],
+    )
+
+
+def case_b1_diagnostic(btc) -> CaseResult:
+    txs = btc.get_address_transactions(ORIGIN, limit=50)
+    agg: dict[str, int] = {}
+    total = 0
+    for t in txs:
+        if ORIGIN in t.input_addresses:
+            for o in t.outputs:
+                if o.address and o.address != ORIGIN:
+                    agg[o.address] = agg.get(o.address, 0) + o.value
+                    total += o.value
+    if not agg:
+        return CaseResult("B1-math", DIAGNOSTIC, "exposure ring-math sanity check",
+                          actual="no outbound edges from origin in window")
+    dominant, domval = max(agg.items(), key=lambda kv: kv[1])
+    pct = 100 * domval / total if total else 0
+    seeded = {dominant: [Label("bitcoin", dominant, "Seeded (diagnostic only)",
+                               "exchange", "seed", "High")]}
+    rep = compute_exposure(btc, "bitcoin", ORIGIN,
+                           label_lookup=lambda c, a: seeded.get(a, []),
+                           hops=1, direction="out", max_fanout=10_000)
+    ring = next((r for r in rep.rings if r.category == "exchange" and r.direction == "out"), None)
+    math_ok = ring is not None and ring.direct_value == domval
+    return CaseResult(
+        "B1-math", DIAGNOSTIC, "exposure ring-math sanity check (NOT a course verdict)",
+        expected="ring.direct_value == summed outbound edges to the seeded counterparty",
+        actual=(
+            f"seeded {dominant} = {pct:.0f}% of 1-hop outflow; "
+            f"ring.direct_value={ring.direct_value if ring else None}; "
+            f"math={'OK' if math_ok else 'MISMATCH'}"
+        ),
+        detail=["Seeds an arbitrary label only to check compute_exposure's arithmetic; "
+                "this does NOT confirm the course's exchange-exposure finding."],
+    )
+
+
+# --- Tier C / D --------------------------------------------------------------
+
+def cases_cd() -> list[CaseResult]:
+    c = [
+        ("C1", "BTC->ETH RenBTC bridge: bc1qr5kg... -> 0xd3f04ce2d37b182432e2f804f9913a02071cea54"),
+        ("C2", "ETH RENBTC -> WBTC/DAI/USDD hops + BitTorrent ETH->TRON bridge"),
+        ("C3", "TRON USDD landing: TMhCFSbdwX8cTC5bg4Q3iAKchH7YWpj9nz"),
+    ]
+    out = [
+        CaseResult(cid, SKIP, "cross-chain matching",
+                   actual="Phase 4 (cross-chain) not built", detail=[note])
+        for cid, note in c
+    ]
+    out.append(CaseResult(
+        "D", SKIP, "TRM-proprietary / ML signatures + private attribution",
+        actual="excluded from heuristic grading by design (CASES.md Tier D)"))
+    return out
+
+
+# --- Tier E (EVM; runs now the address-normalization fix has landed) ---------
+
+def case_e1(evm) -> CaseResult:
+    s = evm.get_address_summary(E1_ADDR)
+    tx = evm.get_transaction(E1_TX)
+    ok = (
+        s is not None and s.tx_count > 0
+        and s.address_type in (AddressType.EOA, AddressType.CONTRACT)
+        and tx is not None and tx.inputs and tx.inputs[0].address
+        and tx.outputs and tx.outputs[0].address
+    )
+    return CaseResult(
+        "E1", PASS if ok else FAIL, "EVM triage / get_transaction smoke",
+        expected="coherent summary (EOA/contract, non-zero activity) + tx resolves with from/to/value",
+        actual=(
+            f"type={getattr(s, 'address_type', None)} tx_count={getattr(s, 'tx_count', None)} | "
+            f"tx from={tx.inputs[0].address if tx and tx.inputs else None} "
+            f"to={tx.outputs[0].address if tx and tx.outputs else None} "
+            f"value={tx.outputs[0].value if tx and tx.outputs else None}"
+        ),
+    )
+
+
+def case_e2(evm) -> CaseResult:
+    raw = evm._proxy({"action": "eth_getTransactionByHash", "txhash": E2_TX})
+    calldata = (raw or {}).get("input")
+    sig = decode_input(calldata)
+    ok = sig is not None
+    return CaseResult(
+        "E2", PASS if ok else FAIL, "contract-function decoding (4byte)",
+        expected="decode_input returns a non-None signature for the calldata",
+        actual=f"selector={(calldata or '')[:10]} -> {sig!r}",
+    )
+
+
+def case_e3() -> CaseResult:
+    eth_cs = "0xAbC0000000000000000000000000000000000123"
+    btc_b58 = "1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2"
+    eth_ok = normalize_address("ethereum", eth_cs) == eth_cs.lower()
+    btc_ok = normalize_address("bitcoin", btc_b58) == btc_b58  # case-significant, unchanged
+    return CaseResult(
+        "E3", PASS if (eth_ok and btc_ok) else FAIL, "EVM label-normalization regression",
+        expected="checksummed ETH lowercases; BTC base58 unchanged",
+        actual=f"eth->{normalize_address('ethereum', eth_cs)} ; btc_unchanged={btc_ok}",
+        detail=["DB round-trip covered by "
+                "tests/test_labels_integration.py::test_e3_evm_checksummed_label_matches_lowercased_lookup"],
+    )
+
+
 # --- report ------------------------------------------------------------------
 
 def _endpoints() -> dict:
@@ -232,12 +363,22 @@ def _endpoints() -> dict:
 
 def run_all() -> list[CaseResult]:
     btc = BlockstreamBTC()
-    return [
+    evm = get_provider("ethereum")
+    results = [
         _safe("A1", lambda: case_a1(btc)),
         _safe("A2", lambda: case_a2(btc)),
         _safe("A3", lambda: case_a3(btc)),
         _safe("A4", lambda: case_a4(btc)),
+        _safe("B1", case_b1),
+        _safe("B1-math", lambda: case_b1_diagnostic(btc)),
     ]
+    results += cases_cd()
+    results += [
+        _safe("E1", lambda: case_e1(evm)),
+        _safe("E2", lambda: case_e2(evm)),
+        _safe("E3", case_e3),
+    ]
+    return results
 
 
 def render_report(results: list[CaseResult]) -> str:
