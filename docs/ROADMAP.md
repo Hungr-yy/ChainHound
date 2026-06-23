@@ -179,8 +179,22 @@ and per-address point lookups are the wrong pattern for a warehouse).
   returning a quietly-wrong change-trail graph). The full account-model forward
   trace is deferred. (`peel` is UTXO-only too but fails safe — `get_spending_tx`
   returns `None` on EVM, so it finds no chain rather than misleading.)
-- *Next slices:* ERC-20/721 (+ `asset` on `TxIO`, per-asset rings) → internal
-  txns/traces → Sourcify/4byte contract decoding.
+- *Slice 2 — ERC-20/721 — done.* `TxIO.asset` (additive; BTC paths unchanged)
+  carries the token; `get_address_transactions` emits one transfer-grained
+  `Transaction` per `tokentx`/`tokennfttx` (NFTs count one unit), and exposure
+  produces **per-asset rings** (`(category, direction, asset)`) so ETH and token
+  exposure never mix units — no traversal changes.
+- *Slice 3 — internal txns/traces — done.* `txlistinternal` value-bearing internal
+  calls normalize like native (failed/zero dropped), surfacing contract-mediated
+  value flow the top-level txlist misses.
+- *Slice 4 — contract decoding — done.* `analysis/decode.py::decode_input` over
+  Sourcify's keyless 4byte service (selector→signature, prefers verified-contract
+  matches over spam); `Transaction.method` is populated free from the explorer's
+  `functionName`. Full ABI argument decoding (needs a keccak dep) is deferred.
+- *Phase 3 status:* slices 1–4 complete and tested; the keyless Routescan default
+  + exposure-on-EVM are live-proven. Remaining for the phase: the account-model
+  forward-trace guard's full implementation, ABI arg decoding, and the opt-in
+  BigQuery EVM bulk backend — all deferred.
 
 ## Phase 4 — Cross-chain matching  *(highest real-world value)*
 Two deterministic tiers, both stored in `cross_chain_link` with method + confidence:
