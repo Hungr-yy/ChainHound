@@ -8,14 +8,16 @@ via :mod:`chainhound_server.store`. Every route needs a database; without
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi.responses import JSONResponse
 
 from chainhound import config
 
-from . import store
-from .deps import get_config, get_connect
+from . import export, store
+from .deps import ProviderFactory, get_config, get_connect, get_provider_factory
 from .schemas import CaseCreate, ElementSave, NoteCreate
 
 router = APIRouter(prefix="/cases")
@@ -109,3 +111,33 @@ def save_element(
     if element is None:
         raise HTTPException(status_code=404, detail=f"case {case_id} not found")
     return element
+
+
+@router.get("/{case_id}/export")
+def court_export(
+    case_id: int,
+    cfg: config.Config = Depends(get_config),
+    connect: Callable = Depends(get_connect),
+    make_provider: ProviderFactory = Depends(get_provider_factory),
+) -> JSONResponse:
+    """Court export: the raw on-chain evidence for a case (no attribution).
+
+    Downloads as an attachment so it can be filed verbatim.
+    """
+    db_url = _require_db(cfg)
+    generated_at = datetime.now(timezone.utc).isoformat()
+    bundle = export.court_export(
+        db_url,
+        case_id,
+        provider_for=lambda chain: make_provider(cfg, chain),
+        connect=connect,
+        generated_at=generated_at,
+    )
+    if bundle is None:
+        raise HTTPException(status_code=404, detail=f"case {case_id} not found")
+    return JSONResponse(
+        content=bundle,
+        headers={
+            "Content-Disposition": f'attachment; filename="case-{case_id}-court-export.json"'
+        },
+    )

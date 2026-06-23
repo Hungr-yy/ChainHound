@@ -371,6 +371,13 @@ async function newCase() {
 function setActiveCase(c) {
   $("#case-label").textContent = c ? `case #${c.case_id}: ${c.name}` : "";
   $("#save-case").disabled = !c;
+  $("#export-case").disabled = !c;
+}
+
+function exportCase() {
+  if (!currentCaseId) return;
+  // Streams the attachment (raw on-chain only) straight to a download.
+  window.open(`/cases/${currentCaseId}/export`, "_blank");
 }
 
 async function saveCase() {
@@ -447,6 +454,7 @@ window.addEventListener("DOMContentLoaded", () => {
   $("#hy-apply").onclick = applyHygiene;
   $("#new-case").onclick = newCase;
   $("#save-case").onclick = saveCase;
+  $("#export-case").onclick = exportCase;
   $("#case-select").addEventListener("change", (e) => loadCase(e.target.value));
   renderTransfers();
   refreshCases();
