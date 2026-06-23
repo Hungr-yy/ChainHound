@@ -17,6 +17,10 @@ class Provider(abc.ABC):
     """A read interface over one chain's public data."""
 
     chain: str = "unknown"
+    #: ledger model — "utxo" (Bitcoin-like) or "account" (EVM-like). Lets
+    #: UTXO-specific analyses (change analysis, peel/trace) refuse account-model
+    #: input instead of returning a quietly-wrong result.
+    model: str = "utxo"
 
     @abc.abstractmethod
     def get_transaction(self, txid: str) -> Optional[Transaction]:

@@ -55,6 +55,7 @@ def _classify_evm(code: Optional[str]) -> AddressType:
 
 class EvmProvider(Provider):
     chain = "ethereum"
+    model = "account"
 
     def __init__(
         self,

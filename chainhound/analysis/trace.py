@@ -47,7 +47,18 @@ class TraceGraph:
 
 
 def trace_from_tx(provider: Provider, start_txid: str, hops: int = 2) -> TraceGraph:
-    """Build a trace graph forward from a transaction along the change trail."""
+    """Build a trace graph forward from a transaction along the change trail.
+
+    Change-trail tracing is UTXO-specific (change analysis + output spending).
+    On an account-model (EVM) provider it would return a plausible-but-wrong
+    graph, so refuse loudly instead — use ``analysis.exposure`` for EVM, and see
+    ROADMAP Phase 3 for the account-model trace guard that is still deferred.
+    """
+    if getattr(provider, "model", "utxo") != "utxo":
+        raise NotImplementedError(
+            "trace_from_tx supports UTXO chains only; "
+            f"{provider.chain!r} is account-model — use exposure instead"
+        )
     graph = TraceGraph()
     frontier: list[str] = [start_txid]
     visited: set[str] = set()
