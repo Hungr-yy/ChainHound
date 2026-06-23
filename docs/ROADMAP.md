@@ -270,11 +270,23 @@ rings + transfer table -> save/load per case. See ARCHITECTURE.md "Interface pla
   (New/Save/Load + case picker). Transfer table with find-in-table. Backend
   serving is tested (`tests/server/test_static.py`); the JS is a thin client over
   tested endpoints.
+- *Slice 4 — watched-address monitoring — done.* Pure, confidence-banded
+  detectors (`chainhound_server/detectors.py`): `new-activity` (tx-count
+  increase) plus threshold-gated `large-inflow`/`large-outflow`, each Near
+  Certainty with a glass-box `detail`. `monitor.run_all` fetches each watch's
+  current snapshot via an engine provider, evaluates against the stored baseline
+  (`watch.baseline` JSONB), writes `alert` rows, and rolls the baseline forward
+  (first check is silent; one bad watch never aborts the sweep). A `/watches`
+  CRUD + `/alerts` + `POST /monitor/run` router (503 without a DB), and a
+  background poller (`python -m chainhound_server.poller`, `chainhound-poller`
+  script) — the worker lives in the platform layer, never the engine. The canvas
+  gained a **Watch** button on the address panel. Offline-tested end to end
+  (detectors, run glue, routes, one poller tick) with a DB-gated integration test
+  (`tests/server/test_monitor_integration.py`).
 - *Decisions locked / used:* UI = Cytoscape.js; frontend = vanilla JS static files
   served by FastAPI (no Node build step).
-- *Remaining:* watched-address detectors + alerts (`watch`/`alert` — deferred by
-  request), richer graph-hygiene UX (auto hide-infra / dust-poisoning filter), and
-  court export (raw on-chain only).
+- *Remaining:* richer graph-hygiene UX (auto hide-infra / dust-poisoning filter)
+  and court export (raw on-chain only).
 
 ## Phase 6 — ML augmentation  *(DEFERRED — own project, needs research)*
 Advisory, confidence-scored signal layered on the deterministic engine, never a
