@@ -159,6 +159,37 @@ class EvmProvider(Provider):
             outputs=[TxIO(address=to, value=value, asset=asset)],
         )
 
+    def _to_internal_tx(self, row: dict) -> Optional[Transaction]:
+        """A value-bearing internal call (contract-mediated native transfer)."""
+        if str(row.get("isError")) == "1":
+            return None
+        to = (row.get("to") or "").lower()
+        frm = (row.get("from") or "").lower()
+        value = int(row.get("value", "0"))
+        if not to or not frm or value == 0:
+            return None  # creates / zero-value calls carry no native transfer
+        return Transaction(
+            txid=row.get("hash", ""),
+            chain=self.chain,
+            timestamp=int(row.get("timeStamp", "0")),
+            inputs=[TxIO(address=frm, value=value, asset=self.native_symbol)],
+            outputs=[TxIO(address=to, value=value, asset=self.native_symbol)],
+        )
+
+    def _internal_txs(self, address: str, limit: int) -> list[Transaction]:
+        rows = self._account(
+            {
+                "action": "txlistinternal",
+                "address": address,
+                "startblock": 0,
+                "endblock": 99999999,
+                "page": 1,
+                "offset": limit,
+                "sort": "desc",
+            }
+        ) or []
+        return [t for t in (self._to_internal_tx(r) for r in rows) if t]
+
     def _token_txs(self, address: str, limit: int) -> list[Transaction]:
         out: list[Transaction] = []
         for action, nft in (("tokentx", False), ("tokennfttx", True)):
@@ -186,7 +217,7 @@ class EvmProvider(Provider):
     def get_address_transactions(self, address: str, limit: int = 50) -> list[Transaction]:
         address = address.lower()
         native = [t for t in (self._to_native_tx(r) for r in self._txlist(address, limit)) if t]
-        return native + self._token_txs(address, limit)
+        return native + self._internal_txs(address, limit) + self._token_txs(address, limit)
 
     def get_address_summary(self, address: str) -> Optional[AddressSummary]:
         address = address.lower()
