@@ -83,8 +83,20 @@ labels and land here now (the only privacy-coin work possible without Phase 7).
 - *Deferred (by design):* vet/wire specific scam/sanction & Etherscan dumps (data,
   not code — `RepoSource` is ready); Chainabuse live `_fetch` (needs a partner API
   key); OFAC program/UID metadata (court-export enhancement, needs a schema
-  decision); a refresh daemon (use the cron recipe in DESIGN.md — no scheduler);
-  pruning labels dropped upstream (upsert refreshes/adds but does not delete).
+  decision); a refresh daemon (use the cron recipe in DESIGN.md — no scheduler).
+- *Safe per-source prune (deferred — the safety rule matters more than the
+  feature):* the upsert refreshes/adds but never deletes, so labels delisted
+  upstream linger. A prune must be **per-source** and run **only after a
+  successful, non-empty fetch** — never on a fetch failure, an empty parse, or a
+  partial load — and must **refuse to prune when the new set is suspiciously
+  smaller than the stored set** (a threshold guard), so a bad OFAC fetch can't
+  wipe the sanctions corpus. Do **not** ship the naive "delete-everything-not-in-
+  the-new-set" version.
+- *Point-in-time provenance (the real home for "don't lose history"):* if
+  "this address was sanctioned at the time" ever needs proving, that is an
+  **append-only audit** concern — a `delisted_at` / history row — not a reason to
+  avoid pruning. It's a separate, and arguably more valuable, feature than prune,
+  and the one place the don't-lose-history instinct should actually be satisfied.
 
 ## Phase 2b — Exposure + pathfinding
 Consumes the labels: counterparty (direct) and indirect (multi-hop) exposure,
