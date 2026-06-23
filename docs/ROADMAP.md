@@ -101,8 +101,34 @@ labels and land here now (the only privacy-coin work possible without Phase 7).
 ## Phase 2b — Exposure + pathfinding
 Consumes the labels: counterparty (direct) and indirect (multi-hop) exposure,
 summed into TRM-style rings. Glass-box provenance on every tag.
+
+**Progress:**
+- *Exposure module — done.* `analysis/exposure.py::compute_exposure` runs a
+  bounded, **bidirectional counterparty BFS** over the `Provider` primitives — its
+  own traversal, since `trace_from_tx` is tx-seeded change-trail-forward, not
+  address-seeded bidirectional. Emits glass-box findings (path + value + label
+  source/confidence) and TRM-style rings split by category and inbound/outbound.
+  CLI: `chainhound exposure <addr> [--hops N] [--direction in|out|both]`.
+  - **Confidence degrades with distance:** `BAND_SCORE × decay**(distance-1)`
+    (decay 0.6), re-banded via `confidence_band` — direct preserves the band,
+    floors to `Low` within ~3 hops, never inflates.
+  - **Value:** exact at distance 1; bottleneck (min-edge) upper bound beyond
+    (not precise taint — FIFO/haircut/poison deferred); full path retained.
+  - **Hard bounds:** `hops`, `max_nodes`, `max_fanout` (a hub is not expanded
+    through → `truncated=True`). 8 offline tests (direct / indirect / near-miss
+    past the bound / high fan-out / ring math / degradation) with a fake provider
+    + fake lookup.
+  - *Live-proven (2026-06-23):* `exposure` on a low-activity neighbor of a
+    sanctioned HYDRA MARKET address surfaced an inbound `sanctioned` ring —
+    counterparty `3ES6pqCueDPCnC4hCqhhYuey6gyiRJZw6E`, **0.321 BTC**, Near
+    Certainty (direct) — over live Blockstream data + the synced OFAC corpus.
 - *On-demand source candidate:* TRM's free Sanctions API — a 2b/on-demand
-  attribution source (wrap with the `OnDemandSource` fetcher), not a 2a bulk loader.
+  attribution source (wrap with the `OnDemandSource` fetcher), not a 2a bulk
+  loader. Needs its **own "sanctions EXPOSURE" confidence seam**, not conflated
+  with a direct OFAC listing.
+- *Deferred:* precise multi-hop taint (FIFO/haircut/poison); EVM/account-model
+  exposure (Phase 3 — the code is provider-agnostic, so it lands when an EVM
+  provider exists); exposure persistence + the investigation UI (Phase 5).
 
 ## Phase 3 — EVM / account tracing
 Etherscan/BigQuery EVM (note: Etherscan free API is 5 req/s, 100k/day, key
