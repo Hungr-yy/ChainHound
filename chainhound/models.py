@@ -128,3 +128,34 @@ def confidence_band(score: float) -> str:
         if score >= threshold:
             return label
     return "Low"
+
+
+# EVM chains use hex addresses whose checksum casing is advisory — lowercase is
+# the canonical form. Other chains (BTC/LTC/BCH base58 + bech32, Tron/XMR/XRP
+# base58) are case-SIGNIFICANT and must never be lowercased. Note Tron is an
+# account-model chain but base58, so normalization keys off EVM-hex, NOT the
+# ledger model.
+EVM_CHAINS: set[str] = {
+    "ethereum",
+    "ethereum-classic",
+    "bsc",
+    "polygon",
+    "optimism",
+    "arbitrum",
+    "base",
+    "avalanche",
+}
+
+
+def normalize_address(chain: str, address: Optional[str]) -> Optional[str]:
+    """Canonicalize an address for storage/lookup, chain-aware.
+
+    EVM hex addresses (a known EVM chain, an ``evm-<id>`` chain, or any ``0x``
+    address) lowercase to their canonical form; everything else passes through
+    unchanged so case-significant base58/bech32 is never corrupted.
+    """
+    if not address:
+        return address
+    if chain in EVM_CHAINS or chain.startswith("evm-") or address.startswith("0x"):
+        return address.lower()
+    return address
