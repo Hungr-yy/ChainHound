@@ -53,3 +53,11 @@ class ElementSave(BaseModel):
     color: Optional[str] = None
     hidden: bool = False
     note: Optional[str] = None
+
+
+class WatchCreate(BaseModel):
+    """Put an address under monitoring, optionally tied to a case."""
+
+    chain: str = Field(..., min_length=1)
+    address: str = Field(..., min_length=1)
+    case_id: Optional[int] = None

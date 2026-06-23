@@ -229,9 +229,10 @@ async function showAddressDetails(address) {
         ["labels", (t.labels || []).join(", ") || "—"],
         ["flags", flags],
       ]) +
-      `<div class="actions">${btn("Exposure rings", "expo")}</div>` +
+      `<div class="actions">${btn("Exposure rings", "expo")}${btn("Watch", "watch")}</div>` +
       '<div id="extra"></div>';
     d.querySelector('[data-act="expo"]').onclick = () => showExposure(address);
+    d.querySelector('[data-act="watch"]').onclick = () => watchAddress(address);
   } catch (e) {
     if (e.status === 404) d.querySelector(".muted").textContent = "address not found on-chain";
     else setStatus(e.message, true);
@@ -290,6 +291,20 @@ async function showExposure(address) {
   } catch (e) {
     if (e.status === 503 && extra)
       extra.innerHTML = '<p class="muted">exposure needs the label corpus (DATABASE_URL).</p>';
+    else setStatus(e.message, true);
+  }
+}
+
+async function watchAddress(address) {
+  try {
+    const w = await api("/watches", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chain: "bitcoin", address, case_id: currentCaseId }),
+    });
+    setStatus(`watching ${address.slice(0, 10)}… (watch #${w.id})`);
+  } catch (e) {
+    if (e.status === 503) setStatus("monitoring needs a database (DATABASE_URL)", true);
     else setStatus(e.message, true);
   }
 }

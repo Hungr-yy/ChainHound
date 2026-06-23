@@ -9,9 +9,17 @@ is injectable for offline tests, mirroring ``chainhound.labels.store``.
 
 from __future__ import annotations
 
+import json
 from typing import Callable, Optional
 
 from chainhound import db
+
+
+def _jsonb(value):
+    """psycopg returns JSONB pre-parsed; tolerate a text round-trip too."""
+    if isinstance(value, str):
+        return json.loads(value)
+    return value
 
 
 # --- cases (investigation) ----------------------------------------------------
@@ -165,3 +173,135 @@ def save_element(
             row = cur.fetchone()
         conn.commit()
     return {"element_id": row[0], "color": row[1], "hidden": row[2], "note": row[3]}
+
+
+# --- monitoring: watches (watch) ----------------------------------------------
+def _watch_row(r) -> dict:
+    return {
+        "id": r[0],
+        "chain": r[1],
+        "address": r[2],
+        "case_id": r[3],
+        "baseline": _jsonb(r[4]),
+        "last_checked_at": r[5],
+        "created_at": r[6],
+    }
+
+
+_WATCH_COLS = "id, chain, address, case_id, baseline, last_checked_at, created_at"
+
+
+def add_watch(
+    database_url: str,
+    chain: str,
+    address: str,
+    *,
+    case_id: Optional[int] = None,
+    connect: Callable = db.connect,
+) -> dict:
+    """Put an address under watch; baseline is established on the first check."""
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO watch (chain, address, case_id) VALUES (%s, %s, %s) "
+                f"RETURNING {_WATCH_COLS}",
+                (chain, address, case_id),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return _watch_row(row)
+
+
+def list_watches(database_url: str, *, connect: Callable = db.connect) -> list[dict]:
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"SELECT {_WATCH_COLS} FROM watch ORDER BY id")
+            rows = cur.fetchall()
+    return [_watch_row(r) for r in rows]
+
+
+def delete_watch(
+    database_url: str, watch_id: int, *, connect: Callable = db.connect
+) -> bool:
+    """Delete a watch (its alerts cascade). True if a row was removed."""
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM watch WHERE id = %s RETURNING id", (watch_id,))
+            removed = cur.fetchone() is not None
+        conn.commit()
+    return removed
+
+
+def update_watch_baseline(
+    database_url: str,
+    watch_id: int,
+    baseline: dict,
+    *,
+    connect: Callable = db.connect,
+) -> None:
+    """Roll the watch's baseline forward and stamp the check time."""
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE watch SET baseline = %s, last_checked_at = now() WHERE id = %s",
+                (json.dumps(baseline), watch_id),
+            )
+        conn.commit()
+
+
+# --- monitoring: alerts (alert) -----------------------------------------------
+def record_alert(
+    database_url: str,
+    watch_id: int,
+    detector: str,
+    detail: dict,
+    *,
+    connect: Callable = db.connect,
+) -> dict:
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO alert (watch_id, detector, detail) VALUES (%s, %s, %s) "
+                "RETURNING id, watch_id, detector, detail, fired_at",
+                (watch_id, detector, json.dumps(detail)),
+            )
+            row = cur.fetchone()
+        conn.commit()
+    return {
+        "id": row[0],
+        "watch_id": row[1],
+        "detector": row[2],
+        "detail": _jsonb(row[3]),
+        "fired_at": row[4],
+    }
+
+
+def list_alerts(
+    database_url: str,
+    *,
+    watch_id: Optional[int] = None,
+    limit: int = 100,
+    connect: Callable = db.connect,
+) -> list[dict]:
+    """Most recent alerts first, optionally scoped to one watch."""
+    sql = "SELECT id, watch_id, detector, detail, fired_at FROM alert"
+    params: tuple = ()
+    if watch_id is not None:
+        sql += " WHERE watch_id = %s"
+        params = (watch_id,)
+    sql += " ORDER BY fired_at DESC, id DESC LIMIT %s"
+    params += (limit,)
+    with connect(database_url) as conn:
+        with conn.cursor() as cur:
+            cur.execute(sql, params)
+            rows = cur.fetchall()
+    return [
+        {
+            "id": r[0],
+            "watch_id": r[1],
+            "detector": r[2],
+            "detail": _jsonb(r[3]),
+            "fired_at": r[4],
+        }
+        for r in rows
+    ]

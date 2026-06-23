@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .cases import router as cases_router
 from .routes import router as query_router
+from .watches import router as watches_router
 
 _STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -28,6 +29,7 @@ def create_app() -> FastAPI:
     )
     app.include_router(query_router)
     app.include_router(cases_router)
+    app.include_router(watches_router)
 
     # The investigation canvas: a vanilla-JS Cytoscape single-page app. Assets
     # are mounted under /static (so they never shadow API routes); the canvas is
