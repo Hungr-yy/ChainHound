@@ -24,6 +24,64 @@ def _provider():
     return get_provider(cfg.provider, **cfg.provider_kwargs())
 
 
+def _provider_for_chain(cfg, chain: str):
+    """A provider for a named chain (BTC keyless Blockstream; EVM keyless explorer)."""
+    if chain in ("bitcoin", "btc"):
+        return get_provider("blockstream")
+    if chain in ("ethereum", "eth", "evm"):
+        kw = {"chain_id": cfg.evm_chain_id, "api_key": cfg.etherscan_key}
+        if cfg.evm_provider_url:
+            kw["base_url"] = cfg.evm_provider_url
+        return get_provider("ethereum", **kw)
+    raise SystemExit(f"no provider configured for chain {chain!r}")
+
+
+def cmd_crosschain(args):
+    import sys
+
+    from .analysis import crosschain as cc
+    from .bridges import ThorchainMidgard
+
+    cfg = config.load()
+    links = []
+    if args.api:
+        link = ThorchainMidgard().lookup(args.src_chain, args.src_txid)
+        if link:
+            links.append(link)
+    else:
+        if not (args.dst_chain and args.dst_address and args.src_asset and args.src_amount):
+            sys.exit(
+                "inferred mode needs --src-asset --src-amount --dst-chain --dst-address"
+            )
+        s_asset = args.src_asset.upper()
+        s_dec = cc.ASSETS.get(s_asset, (None, 8))[1]
+        src_ts = args.src_time
+        if src_ts is None:
+            stx = _provider_for_chain(cfg, args.src_chain).get_transaction(args.src_txid)
+            src_ts = stx.timestamp if stx else 0
+        src = cc.Transfer(
+            args.src_chain, args.src_txid, None, s_asset,
+            int(round(args.src_amount * 10 ** s_dec)), s_dec, src_ts,
+        )
+        dst_addr = args.dst_address.lower()
+        evm = args.dst_chain in ("ethereum", "eth", "evm")
+        dp = _provider_for_chain(cfg, args.dst_chain)
+        candidates = []
+        for tx in dp.get_address_transactions(dst_addr):
+            for o in tx.outputs:
+                if o.address == dst_addr:
+                    dec = cc.ASSETS.get((o.asset or "").upper(), (None, 18 if evm else 8))[1]
+                    candidates.append(cc.Transfer(
+                        args.dst_chain, tx.txid, o.address, o.asset, o.value, dec, tx.timestamp
+                    ))
+        links = cc.infer_links(src, candidates)
+
+    if args.save and cfg.database_url:
+        for link in links:
+            cc.save_cross_chain_link(cfg.database_url, link)
+    print(json.dumps([l.to_dict() for l in links], indent=2, default=str))
+
+
 def _label_lookup(cfg):
     """Build a (chain, address) -> [name] hook from the label store, or None."""
     if not cfg.database_url:
@@ -169,6 +227,19 @@ def build_parser() -> argparse.ArgumentParser:
     ex.add_argument("--hops", type=int, default=2)
     ex.add_argument("--direction", choices=["in", "out", "both"], default="both")
     ex.set_defaults(func=cmd_exposure)
+
+    cc = sub.add_parser("crosschain", help="link a flow across chains (api / inferred)")
+    cc.add_argument("--src-chain", required=True)
+    cc.add_argument("--src-txid", required=True)
+    cc.add_argument("--api", action="store_true",
+                    help="query the bridge explorer (THORChain) for the src<->dst pair")
+    cc.add_argument("--src-asset", help="inferred mode: asset sent (e.g. BTC)")
+    cc.add_argument("--src-amount", type=float, help="inferred mode: human amount sent")
+    cc.add_argument("--src-time", type=int, help="inferred mode: src unix time (else fetched)")
+    cc.add_argument("--dst-chain", help="inferred mode: destination chain")
+    cc.add_argument("--dst-address", help="inferred mode: destination address to scan")
+    cc.add_argument("--save", action="store_true", help="persist links (needs a DB)")
+    cc.set_defaults(func=cmd_crosschain)
 
     db = sub.add_parser("initdb", help="create the Postgres schema")
     db.set_defaults(func=cmd_initdb)
