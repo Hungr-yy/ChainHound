@@ -43,6 +43,25 @@ def cmd_triage(args):
     print(json.dumps(report, indent=2, default=str))
 
 
+def cmd_exposure(args):
+    from .labels import store
+    from .analysis.exposure import compute_exposure
+
+    cfg = config.load()
+    if not cfg.database_url:
+        sys.exit("set CHAINHOUND_DATABASE_URL — exposure needs the label corpus")
+    provider = get_provider(cfg.provider, **cfg.provider_kwargs())
+
+    def lookup(chain, address):
+        return store.lookup(cfg.database_url, chain, address)
+
+    report = compute_exposure(
+        provider, provider.chain, args.address,
+        label_lookup=lookup, hops=args.hops, direction=args.direction,
+    )
+    print(json.dumps(report.to_dict(), indent=2, default=str))
+
+
 def cmd_trace(args):
     graph = trace_from_tx(_provider(), args.txid, hops=args.hops)
     print(json.dumps(graph.to_dict(), indent=2, default=str))
@@ -144,6 +163,12 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument("txid")
     pe.add_argument("--max-hops", type=int, default=50)
     pe.set_defaults(func=cmd_peel)
+
+    ex = sub.add_parser("exposure", help="labeled-entity exposure (direct + indirect)")
+    ex.add_argument("address")
+    ex.add_argument("--hops", type=int, default=2)
+    ex.add_argument("--direction", choices=["in", "out", "both"], default="both")
+    ex.set_defaults(func=cmd_exposure)
 
     db = sub.add_parser("initdb", help="create the Postgres schema")
     db.set_defaults(func=cmd_initdb)
