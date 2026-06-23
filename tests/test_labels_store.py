@@ -101,6 +101,38 @@ def test_sync_with_no_labels_writes_nothing():
     assert conn.cursor_obj.many == []    # no insert
 
 
+def test_sync_normalizes_evm_address_on_write():
+    labels = [
+        Label("ethereum", "0x1Da5821544E25c636c1417Ba96Ade4Cf6D2f9B5a",
+              "Some Exchange", "exchange", "tagpack", "High"),
+    ]
+    conn = _FakeConn()
+    store.sync("postgresql://x", _StaticSource(labels), text="<i/>",
+               connect=lambda _url: conn)
+    written_addr = conn.cursor_obj.many[0][1][0][1]
+    assert written_addr == "0x1da5821544e25c636c1417ba96ade4cf6d2f9b5a"
+
+
+def test_sync_preserves_btc_base58_case_on_write():
+    labels = [
+        Label("bitcoin", "1Q9UMz5aGanLxgqQ2j6t9JNQVSiCwGCi9b",
+              "OFAC SDN: X", "sanctioned", "ofac", "Near Certainty"),
+    ]
+    conn = _FakeConn()
+    store.sync("postgresql://x", _StaticSource(labels), text="<i/>",
+               connect=lambda _url: conn)
+    assert conn.cursor_obj.many[0][1][0][1] == "1Q9UMz5aGanLxgqQ2j6t9JNQVSiCwGCi9b"
+
+
+def test_lookup_normalizes_evm_query_address():
+    conn = _FakeConn(rows=[])
+    store.lookup("postgresql://x", "ethereum",
+                 "0x1Da5821544E25c636c1417Ba96Ade4Cf6D2f9B5a",
+                 connect=lambda _url: conn)
+    _, params = conn.cursor_obj.calls[0]
+    assert params == ("ethereum", "0x1da5821544e25c636c1417ba96ade4cf6d2f9b5a")
+
+
 def test_lookup_filters_on_chain_and_address():
     row = ("bitcoin", "1AAA", "OFAC SDN: X", "sanctioned", "ofac", "Near Certainty")
     conn = _FakeConn(rows=[row])

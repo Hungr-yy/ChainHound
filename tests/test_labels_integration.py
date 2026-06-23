@@ -138,6 +138,20 @@ def test_cache_upsert_and_expiry(db_url):
     assert store.cache_get(db_url, "chainabuse", "ethereum:0xABC") == {"reports": [1]}
 
 
+def test_e3_evm_checksummed_label_matches_lowercased_lookup(db_url):
+    # Tier E3: a checksummed ETH label must be found by a lowercased lookup and
+    # vice versa — the casing bug this fix closes.
+    checksum = "0xAbC0000000000000000000000000000000000123"
+    lower = checksum.lower()
+    store.replace_address(
+        db_url, "tagpack", "ethereum", checksum,
+        [Label("ethereum", checksum, "Some Exchange", "exchange", "tagpack", "High")],
+    )
+    assert store.lookup(db_url, "ethereum", lower)        # lowercased query
+    got = store.lookup(db_url, "ethereum", checksum)      # checksummed query
+    assert got and got[0].address == lower and got[0].category == "exchange"
+
+
 def test_replace_address_is_idempotent(db_url):
     label = Label(
         "ethereum", "0xDEF", "Chainabuse: PHISHING", "scam", "chainabuse", "Low"

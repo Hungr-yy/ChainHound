@@ -12,6 +12,7 @@ import json
 from typing import Callable, Optional
 
 from .. import db
+from ..models import normalize_address
 from .base import Label, LabelSource
 
 # Upsert on the partial unique index (chain, address, source, name). Address-less
@@ -30,9 +31,20 @@ _SELECT = (
 
 
 def _rows(labels: list[Label]) -> list[tuple]:
-    """Upsert parameter tuples for address-scoped labels (partial-index safe)."""
+    """Upsert parameter tuples for address-scoped labels (partial-index safe).
+
+    Addresses are canonicalized (EVM hex -> lowercase) so they match the same
+    normalization applied at lookup time; base58/bech32 pass through unchanged.
+    """
     return [
-        (l.chain, l.address, l.name, l.category, l.source, l.confidence)
+        (
+            l.chain,
+            normalize_address(l.chain, l.address),
+            l.name,
+            l.category,
+            l.source,
+            l.confidence,
+        )
         for l in labels
         if l.address
     ]
@@ -70,6 +82,7 @@ def lookup(
     connect: Callable = db.connect,
 ) -> list[Label]:
     """Return all labels recorded for ``(chain, address)``."""
+    address = normalize_address(chain, address)  # match the form written at ingest
     with connect(database_url) as conn:
         with conn.cursor() as cur:
             cur.execute(_SELECT, (chain, address))
@@ -142,6 +155,7 @@ def replace_address(
     connect: Callable = db.connect,
 ) -> None:
     """Replace this source's labels for one address (idempotent per re-check)."""
+    address = normalize_address(chain, address)  # match the canonical stored form
     rows = _rows(labels)
     with connect(database_url) as conn:
         with conn.cursor() as cur:

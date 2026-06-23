@@ -100,8 +100,14 @@ class OnDemandSource(abc.ABC):
         ...
 
     def request_key(self, chain: str, address: str) -> str:
-        """Opaque cache key for this lookup (override for non-address queries)."""
-        return f"{chain}:{address}"
+        """Opaque cache key for this lookup (override for non-address queries).
+
+        Normalizes the address (EVM hex -> lowercase) so the cache key is
+        case-stable, matching the label store's normalization.
+        """
+        from ..models import normalize_address
+
+        return f"{chain}:{normalize_address(chain, address)}"
 
     def check(
         self,
