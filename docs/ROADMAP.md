@@ -58,8 +58,27 @@ labels and land here now (the only privacy-coin work possible without Phase 7).
   (lines or csv), so adding a vetted dump is data, not code.
 - *Sources & CLI.* `labels/sources.py` registry; `labels sync --source|--all`,
   `labels check`, `labels lookup`, `labels sources`.
-- *Remaining (ongoing):* select/vet specific community dump repos; run bulk syncs
-  on a cadence (cron + idempotent re-pull — no daemon, per scope).
+- *Persistence — live-proven (2026-06-23).* The full attribution loop was run
+  end-to-end against a real Postgres 16, not just fake-connection unit tests:
+  - `initdb` applies `sql/schema.sql` cleanly; the live OFAC fetch
+    (`treasury.gov/ofac/downloads/sdn.xml`, ~28 MB) parses to **798**
+    crypto-address labels (520 BTC / 188 ETH / 50 TRON / …) and `labels sync
+    --source ofac` wrote all 798 (~47 s wall, fetch-dominated).
+  - Closed loop: `labels lookup 123WBUDmSJv4GctdVEz6Qq6z8nXSKrJ4KX` →
+    *OFAC SDN: HYDRA MARKET (sanctioned, ofac, Near Certainty)*, and `triage` of
+    that address attaches `["OFAC SDN: HYDRA MARKET"]` (`found: true`).
+  - Bulk volume: `labels sync --source tagpack` wrote **524,170** rows in ~51 s
+    (parse 44 s + `executemany` insert **8 s** — fast enough; no COPY needed).
+  - SQL verified on live psycopg3: delete-by-source + `executemany` refresh,
+    `make_interval(secs => %s)` cache freshness, `ON CONFLICT (source,chain,
+    address)` upsert, `replace_address`, and `with connect()` commit/close.
+  - Locked in by `tests/test_labels_integration.py` (skipped unless
+    `CHAINHOUND_DATABASE_URL` is set; isolated in a dropped-on-teardown schema).
+- *Deferred (by design):* vet/wire specific scam/sanction & Etherscan dumps (data,
+  not code — `RepoSource` is ready); Chainabuse live `_fetch` (needs a partner API
+  key); OFAC program/UID metadata (court-export enhancement, needs a schema
+  decision); a refresh daemon (use the cron recipe in DESIGN.md — no scheduler);
+  the `labels` packaging extra (pyyaml currently rides in `live`).
 
 ## Phase 2b — Exposure + pathfinding
 Consumes the labels: counterparty (direct) and indirect (multi-hop) exposure,

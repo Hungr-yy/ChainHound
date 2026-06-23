@@ -96,7 +96,30 @@ investigation touches are fetched.
 - Etherscan name-tag labels (NOT in the API — web-only; use a community dump)
 - sanctioned/scam address repos (git)
 
-Loaded by a batch job with idempotent upserts; re-pulls dedup.
+Loaded by a batch job with idempotent upserts (delete-by-source + reinsert);
+re-pulls dedup. There is no scheduler in the toolkit (no background workers) —
+run the refresh from cron (Linux/macOS).
+
+Portable per-user crontab (`crontab -e`; works on Linux and macOS — no user
+field, no special permissions):
+
+```cron
+# refresh bulk label sources nightly at 03:00
+0 3 * * *  CHAINHOUND_DATABASE_URL=postgresql://localhost/chainhound \
+    chainhound labels sync --all >> "$HOME/chainhound-labels.log" 2>&1
+```
+
+For a system-wide job, put the same line — with a user field after the schedule
+(`0 3 * * * analyst …`) — in `/etc/cron.d/chainhound-labels` (Linux). cron
+silently ignores files there unless they are root-owned and not group/world-
+writable:
+
+```sh
+sudo install -o root -g root -m 0644 chainhound-labels /etc/cron.d/chainhound-labels
+```
+
+(Windows has no cron — run the same `chainhound labels sync --all` from Task
+Scheduler.)
 
 **On-demand/cached — rate-limited, queried lazily for case addresses only:**
 - Etherscan API for txns/traces (5 req/s, 100k/day, key required; some chains
