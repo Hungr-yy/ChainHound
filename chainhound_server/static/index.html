@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ChainHound — Investigation Canvas</title>
+  <!-- Cytoscape.js via CDN (no build step; pin a version for reproducibility). -->
+  <script src="https://unpkg.com/cytoscape@3.30.2/dist/cytoscape.min.js"></script>
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header id="topbar">
+    <span class="brand">⛓️ ChainHound</span>
+    <input id="search" type="text" placeholder="seed txid (trace) or address (triage)…" />
+    <label class="hops">hops
+      <input id="hops" type="number" value="1" min="0" max="10" />
+    </label>
+    <button id="go">Search</button>
+    <span class="sep"></span>
+    <select id="case-select" title="load a saved case"><option value="">— cases —</option></select>
+    <button id="new-case">New case</button>
+    <button id="save-case" disabled>Save</button>
+    <span id="case-label" class="case-label"></span>
+    <span id="status" class="status"></span>
+  </header>
+
+  <main>
+    <section id="canvas-wrap">
+      <div id="cy"></div>
+      <div id="legend">
+        <strong>Change-trail confidence</strong>
+        <span class="lg" data-band="Near Certainty">Near Certainty</span>
+        <span class="lg" data-band="High">High</span>
+        <span class="lg" data-band="Moderate">Moderate</span>
+        <span class="lg" data-band="Low">Low</span>
+        <span class="lg" data-band="payment">payment</span>
+      </div>
+    </section>
+
+    <aside id="sidebar">
+      <div id="details" class="panel">
+        <h2>Details</h2>
+        <p class="muted">Search a txid to plot a trace, then click a node.</p>
+      </div>
+
+      <div id="hygiene" class="panel hidden">
+        <h2>Graph hygiene</h2>
+        <p class="sel-id muted"></p>
+        <label>Color
+          <input id="hy-color" type="color" value="#888888" />
+        </label>
+        <label class="row"><input id="hy-hidden" type="checkbox" /> Hide (infra/noise)</label>
+        <label>Note
+          <textarea id="hy-note" rows="2" placeholder="common-ownership / annotation…"></textarea>
+        </label>
+        <button id="hy-apply">Apply</button>
+      </div>
+
+      <div id="transfers" class="panel">
+        <h2>Transfers</h2>
+        <input id="tx-filter" type="text" placeholder="find in table…" />
+        <div class="table-wrap">
+          <table id="tx-table">
+            <thead><tr><th>from</th><th>to</th><th>value</th><th>role</th><th>conf.</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </aside>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>
