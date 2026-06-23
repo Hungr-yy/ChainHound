@@ -64,6 +64,8 @@ labels and land here now (the only privacy-coin work possible without Phase 7).
 ## Phase 2b — Exposure + pathfinding
 Consumes the labels: counterparty (direct) and indirect (multi-hop) exposure,
 summed into TRM-style rings. Glass-box provenance on every tag.
+- *On-demand source candidate:* TRM's free Sanctions API — a 2b/on-demand
+  attribution source (wrap with the `OnDemandSource` fetcher), not a 2a bulk loader.
 
 ## Phase 3 — EVM / account tracing
 Etherscan/BigQuery EVM (note: Etherscan free API is 5 req/s, 100k/day, key
