@@ -56,6 +56,10 @@ class TxIO:
     n_tx_seen: Optional[int] = None
     # For outputs: the txid that later spends this output, if known.
     spent_by_txid: Optional[str] = None
+    # Asset moved on this side of the transfer. Native value for UTXO ("BTC") and
+    # EVM ("ETH"); a token symbol/contract for ERC-20/721 transfers. Lets the
+    # account model carry token transfers that are not native value.
+    asset: str = "BTC"
 
     @property
     def multisig_type(self) -> Optional[str]:

@@ -69,7 +69,8 @@ class ExposureFinding:
     chain: str
     direction: str          # "in" (funds FROM here) | "out" (funds TO here)
     distance: int           # hops from the seed; 1 = direct
-    value: int              # sats; exact at distance 1, bottleneck upper-bound beyond
+    value: int              # smallest unit of `asset`; exact at distance 1, bottleneck beyond
+    asset: str              # native ("BTC"/"ETH") or a token symbol/contract
     path: list[str]         # seed -> ... -> counterparty
     label_name: str
     category: str
@@ -82,6 +83,7 @@ class ExposureFinding:
 class CategoryRing:
     category: str
     direction: str
+    asset: str                        # rings are per-asset (units differ across assets)
     counterparties: int
     direct_value: int                 # exact (distance 1)
     indirect_value_upper_bound: int   # sum of bottlenecks (approximate; may double-count)
@@ -110,29 +112,37 @@ class ExposureReport:
         }
 
 
-def _counterparties(provider: Provider, node: str, direction: str) -> dict[str, int]:
+def _counterparties(provider: Provider, node: str, direction: str) -> dict[tuple, int]:
     """Aggregate a node's counterparties and the value on each edge, by direction.
 
     out: txs where ``node`` is an input -> output addresses (value = output value).
     in:  txs where ``node`` is an output -> input addresses (value = received,
          split equally across the funding inputs).
     """
-    agg: dict[str, int] = defaultdict(int)
+    agg: dict[tuple, int] = defaultdict(int)  # (counterparty, asset) -> value
     for tx in provider.get_address_transactions(node):
         if direction == "out":
             if node in tx.input_addresses:
                 for o in tx.outputs:
                     if o.address and o.address != node:
-                        agg[o.address] += o.value
+                        agg[(o.address, o.asset)] += o.value
         else:  # "in"
-            if node in {o.address for o in tx.outputs}:
-                received = sum(o.value for o in tx.outputs if o.address == node)
-                inputs = [i.address for i in tx.inputs if i.address and i.address != node]
-                distinct = list(dict.fromkeys(inputs))
-                if distinct:
-                    share = received // len(distinct)
-                    for a in distinct:
-                        agg[a] += share
+            outs_to_node = [o for o in tx.outputs if o.address == node]
+            if outs_to_node:
+                received: dict[str, int] = defaultdict(int)
+                for o in outs_to_node:
+                    received[o.asset] += o.value
+                for asset, recv in received.items():
+                    inputs = [
+                        i.address
+                        for i in tx.inputs
+                        if i.address and i.address != node and i.asset == asset
+                    ]
+                    distinct = list(dict.fromkeys(inputs))
+                    if distinct:
+                        share = recv // len(distinct)
+                        for a in distinct:
+                            agg[(a, asset)] += share
     return dict(agg)
 
 
@@ -155,20 +165,21 @@ def _traverse(
             break
         expanded += 1
 
+        # keyed by (counterparty, asset); the hub bound counts distinct addresses
         cps = {
-            a: v
-            for a, v in _counterparties(provider, node, direction).items()
-            if a not in path
+            (cp, asset): v
+            for (cp, asset), v in _counterparties(provider, node, direction).items()
+            if cp not in path
         }
-        if len(cps) > max_fanout:
+        if len({cp for cp, _ in cps}) > max_fanout:
             state["truncated"] = True  # a hub — don't expand through it
             continue
 
-        for cp, val in cps.items():
+        for (cp, asset), val in cps.items():
             cp_dist = dist + 1
             cp_bottleneck = val if bottleneck is None else min(bottleneck, val)
             for lbl in label_lookup(chain, cp):
-                key = (direction, cp, lbl.name)
+                key = (direction, cp, asset, lbl.name)
                 if key in seen:
                     continue
                 seen.add(key)
@@ -179,6 +190,7 @@ def _traverse(
                         direction=direction,
                         distance=cp_dist,
                         value=cp_bottleneck,
+                        asset=asset,
                         path=path + [cp],
                         label_name=lbl.name,
                         category=lbl.category,
@@ -194,13 +206,14 @@ def _traverse(
 def _build_rings(findings: list[ExposureFinding]) -> list[CategoryRing]:
     groups: dict[tuple, list[ExposureFinding]] = defaultdict(list)
     for f in findings:
-        groups[(f.category, f.direction)].append(f)
+        groups[(f.category, f.direction, f.asset)].append(f)
     rings = []
-    for (category, direction), fs in sorted(groups.items()):
+    for (category, direction, asset), fs in sorted(groups.items()):
         rings.append(
             CategoryRing(
                 category=category,
                 direction=direction,
+                asset=asset,
                 counterparties=len({f.address for f in fs}),
                 direct_value=sum(f.value for f in fs if f.distance == 1),
                 indirect_value_upper_bound=sum(f.value for f in fs if f.distance > 1),

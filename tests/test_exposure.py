@@ -13,13 +13,13 @@ from chainhound.labels.base import Label
 from chainhound.models import Transaction, TxIO
 
 
-def _tx(txid, ins, outs):
+def _tx(txid, ins, outs, asset="BTC"):
     return Transaction(
         txid=txid,
         chain="bitcoin",
         timestamp=0,
-        inputs=[TxIO(address=a, value=v) for a, v in ins],
-        outputs=[TxIO(address=a, value=v) for a, v in outs],
+        inputs=[TxIO(address=a, value=v, asset=asset) for a, v in ins],
+        outputs=[TxIO(address=a, value=v, asset=asset) for a, v in outs],
     )
 
 
@@ -186,6 +186,27 @@ def test_rings_separate_in_out_and_sum_direct_value():
     assert sanc_in.direct_value == 1950
     assert sanc_in.strongest_confidence == "Near Certainty"
     assert ("exchange", "in") not in rings        # no inbound exchange
+
+
+def test_rings_separate_by_asset():
+    # Same category + direction, two assets -> two distinct rings (units differ).
+    txs = [
+        _tx("o1", [("SEED", 1000)], [("USDCEX", 600)], asset="USDC"),
+        _tx("o2", [("SEED", 2_000)], [("ETHEX", 900)], asset="ETH"),
+    ]
+    rep = compute_exposure(
+        _FakeProvider(txs), "ethereum", "SEED",
+        label_lookup=_lookup({
+            "USDCEX": [_lbl("USDCEX", "Usdc Ex", "exchange", "High")],
+            "ETHEX": [_lbl("ETHEX", "Eth Ex", "exchange", "High")],
+        }),
+        hops=1, direction="out",
+    )
+    rings = {(r.category, r.direction, r.asset): r for r in rep.rings}
+    assert ("exchange", "out", "USDC") in rings
+    assert ("exchange", "out", "ETH") in rings
+    assert rings[("exchange", "out", "USDC")].direct_value == 600
+    assert {f.asset for f in rep.findings} == {"USDC", "ETH"}
 
 
 def test_decay_default_is_documented_constant():
