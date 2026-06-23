@@ -1,0 +1,12 @@
+{
+  "ok": true,
+  "result": {
+    "function": {
+      "0xa9059cbb": [
+        {"name": "workMyDirefulOwner(uint256,uint256)", "filtered": true, "hasVerifiedContract": false},
+        {"name": "transfer(address,uint256)", "filtered": false, "hasVerifiedContract": true}
+      ]
+    },
+    "event": {}
+  }
+}

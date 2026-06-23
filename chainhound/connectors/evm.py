@@ -138,6 +138,7 @@ class EvmProvider(Provider):
             inputs=[TxIO(address=frm, value=value, asset=self.native_symbol)],
             outputs=[TxIO(address=to, value=value, asset=self.native_symbol)],
             fee=fee,
+            method=row.get("functionName") or None,
         )
 
     def _to_token_tx(self, row: dict, *, nft: bool) -> Optional[Transaction]:
@@ -157,6 +158,7 @@ class EvmProvider(Provider):
             timestamp=int(row.get("timeStamp", "0")),
             inputs=[TxIO(address=frm, value=value, asset=asset)],
             outputs=[TxIO(address=to, value=value, asset=asset)],
+            method=row.get("functionName") or None,
         )
 
     def _to_internal_tx(self, row: dict) -> Optional[Transaction]:

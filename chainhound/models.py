@@ -77,6 +77,9 @@ class Transaction:
     outputs: list[TxIO] = field(default_factory=list)
     fee: int = 0
     is_coinbase: bool = False
+    # Decoded contract-call function signature, when known (EVM). Glass-box: what
+    # the transaction actually invoked, e.g. "transfer(address,uint256)".
+    method: Optional[str] = None
 
     @property
     def input_addresses(self) -> set[str]:

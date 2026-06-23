@@ -93,6 +93,15 @@ def test_token_transfers_normalize_with_asset():
     assert by_asset["BAYC"][0].outputs[0].value == 1   # one NFT, not a divisible value
 
 
+def test_method_populated_from_explorer_function_name():
+    # the explorer hands back functionName for free; surface it as tx.method
+    moo = next(
+        t for t in _provider().get_address_transactions(SEED)
+        if t.outputs and t.outputs[0].asset == "MOODENG"
+    )
+    assert moo.method == "transfer(address recipient, uint256 amount) returns (bool)"
+
+
 def test_evm_exposure_rings_separate_native_and_token():
     def lookup(chain, address):
         if address in (CP_OUT, USDC_RECIP):
