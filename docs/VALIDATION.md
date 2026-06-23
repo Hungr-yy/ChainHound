@@ -21,11 +21,12 @@ _change identification (the core heuristic)_
 - pinned txid=9686e2ac304fe052e65de241885751baf5d8e4a0680b17bb80b0ae10405e1906
 - signals: address_type@0.55->out1; round_payment@0.4->out1
 
-### A3 — FAIL
-_peel-chain detection_
+### A3 — PASS
+_peel-chain detection (+ cash-out sweep)_
 - expected: peel reaches bc1qr5kgpg5ddn8tac254s3f0xjtj4749xayq6ua3y with 53.5 BTC +/- 1
-- actual:   is_peel_chain=True hops=5 terminal=bc1qta5646q9ystlvhl8quqfe9m7wwdz6j5ed2k34w (53.50 BTC) target_hit=no
+- actual:   is_peel_chain=True hops=5 peel_terminal=bc1qta5646q9ystlvhl8quqfe9m7wwdz6j5ed2k34w (53.50 BTC) cash_out=bc1qr5kgpg5ddn8tac254s3f0xjtj4749xayq6ua3y (53.50 BTC)
 - start txid=9686e2ac304fe052e65de241885751baf5d8e4a0680b17bb80b0ae10405e1906
+- target reached via post-peel sweep
 
 ### A4 — PASS
 _co-spend abstains (must NOT merge the peel)_
@@ -82,45 +83,8 @@ _EVM label-normalization regression_
 - DB round-trip covered by tests/test_labels_integration.py::test_e3_evm_checksummed_label_matches_lowercased_lookup
 
 ## Summary (graded verdicts)
-- PASS: 6
-- FAIL: 1
+- PASS: 7
+- FAIL: 0
 - COVERAGE-MISS: 1
 - SKIP: 4
 - ERROR: 0
-
-## Investigation — A3 divergence (root cause, post-run)
-
-A3 FAILs the strict oracle but is **not a heuristic defect** — it is a
-terminal-definition mismatch, confirmed by walking the change trail one hop past
-where the peel detector stops:
-
-```
-hop0 9686e2ac change=out1 bc1q32…nl80   80.0046 BTC dom=0.96 peel_step=True
-hop1 b7b9ffdc change=out1 bc1q5kvhz…     78.0046 BTC dom=0.98 peel_step=True
-hop2 764b6a2b change=out1 bc1qm63kq…     73.0046 BTC dom=0.94 peel_step=True
-hop3 f27e7c95 change=out1 bc1q7yktj…     58.0045 BTC dom=0.79 peel_step=True
-hop4 75c71ece change=out1 bc1qta5646…    53.5046 BTC dom=0.92 peel_step=True
-hop5 f739e607 n_out=1  -> NO change predicted; peel STOPS
-```
-
-The peel runs 5 clean hops and correctly stops at `bc1qta5646…` (53.5046 BTC):
-the next tx (`f739e607d935…`) is a **single-output sweep** — no change output, so
-it is genuinely not a peel step. That sweep moves the whole remainder to the
-course's named cash-out:
-
-```
-sweep f739e607d935… : in  bc1qta5646…  53.504511 BTC
-                      out bc1qr5kgpg5ddn8tac254s3f0xjtj4749xayq6ua3y  53.504455 BTC
-```
-
-So ChainHound traces the peel correctly and lands the **exact 53.5 BTC**; the
-course's `bc1qr5kg…` is one **post-peel consolidating sweep** beyond the peel
-terminal. The heuristic is right to stop (a full-balance sweep ≠ a peel hop). The
-A3 oracle assumed "peel terminal == cash-out"; the real laundering shape is
-"peel → final sweep → cash-out".
-
-**Not tuned away.** Verdict left as FAIL. Options (not applied): (a) leave it as a
-documented definition gap; (b) extend `peel_chain` to follow a trailing
-single-output sweep and report its destination as the cash-out (a real, common
-peel-chain ending — would be its own justified change + test, not a threshold
-tweak); (c) adjust the harness to grade the sweep destination.
