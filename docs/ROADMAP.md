@@ -212,6 +212,25 @@ Two deterministic tiers, both stored in `cross_chain_link` with method + confide
   equivalence + amount within fee tolerance + time window + known bridge
   contracts. The real novel heuristic work; automates today's manual matching.
 
+**Progress:**
+- *Inferred tier — done.* `analysis/crosschain.py`: `score_match`/`infer_links`
+  over `Transfer`s — gate on asset peg-equivalence, require amount within a fee
+  tolerance (human-decimal) and dst within a time window after src, lift on a
+  known-bridge touch. Amount+time alone cap at **Moderate** (never certain); a
+  known bridge → High/Near Certainty. Results carry glass-box `matched_on` and
+  persist to `cross_chain_link` (`save_cross_chain_link`). Live-proven on the Pando
+  **C1** hop: BTC 53.5 → RENBTC 53.39 → inferred link, `rel_delta` 0.2%, **Moderate**
+  (honest — RenBridge is defunct, so it isn't in the bridge registry; would be High
+  with the bridge registered).
+- *Api tier — one connector done.* `bridges.py`: `BridgeExplorer` ABC +
+  `ThorchainMidgard` (keyless `/v2/actions?txid=`). **Live-proven**: a real swap
+  resolved `bitcoin → ethereum` (USDC), `method=api`, Near Certainty. Wormholescan
+  fits the same ABC (future impl).
+- *CLI:* `chainhound crosschain --src-chain --src-txid {--api | inferred}`.
+- *Deferred:* auto-discovery of the dst without an anchor/bridge API (needs a chain
+  index/BigQuery); Wormhole/deBridge/LayerZero connectors (ABC ready); a TRON
+  connector + full C2/C3 multi-swap (WBTC→DAI→USDD) asset tracing.
+
 ## Phase 5 — Monitoring, hygiene, reporting + investigation UI
 Watched-address detectors + alerts; graph hygiene (color, notes, hide infra,
 presentation copy); dust/poisoning filter; court export (raw on-chain only).

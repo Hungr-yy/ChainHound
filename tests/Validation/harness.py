@@ -288,16 +288,57 @@ def case_b1_diagnostic(btc) -> CaseResult:
 
 # --- Tier C / D --------------------------------------------------------------
 
+def case_c1() -> CaseResult:
+    # C1 inferred match (Phase 4): the Pando BTC->RENBTC bridge hop. Scored on the
+    # CASES.md ground-truth amounts (53.5 BTC -> 53.39 RENBTC); Ren is defunct and
+    # not in the bridge registry, so the honest band is Moderate (no bridge bonus).
+    from chainhound.analysis import crosschain as cc
+
+    src = cc.Transfer("bitcoin", "C1-src", "bc1qr5kgpg5ddn8tac254s3f0xjtj4749xayq6ua3y",
+                      "BTC", 5_350_000_000, 8, 1_000_000)
+    dst = cc.Transfer("ethereum", "C1-dst", "0xd3f04ce2d37b182432e2f804f9913a02071cea54",
+                      "RENBTC", 5_339_000_000, 8, 1_000_000 + 3_600)
+    m = cc.score_match(src, dst)
+    if m is None:
+        return CaseResult("C1", FAIL, "BTC->ETH RenBTC inferred cross-chain match",
+                          actual="no inferred match")
+    band, matched = m
+    ok = matched["rel_delta"] < 0.01 and band in ("Moderate", "High", "Near Certainty")
+    return CaseResult(
+        "C1", PASS if ok else FAIL, "BTC->ETH RenBTC inferred cross-chain match",
+        expected="asset-equiv (BTC=RENBTC), 53.5~53.39 within fee tol, in window -> inferred link",
+        actual=f"band={band} rel_delta={matched['rel_delta']} time_delta_s={matched['time_delta_s']} bridge={matched['bridge']}",
+        detail=["scored on CASES.md ground-truth amounts; Ren bridge is defunct / "
+                "not in KNOWN_BRIDGES, so Moderate (not High) is the honest band"],
+    )
+
+
+def case_bridge_api() -> CaseResult:
+    # live api-tier proof on a real THORChain swap (CASES.md's Ren bridge has no API)
+    from chainhound.bridges import ThorchainMidgard
+
+    txid = "CE396D8FBC19B962D03DC09E693909A5C1E36B30747AD036AA061ED44029AB3C"
+    link = ThorchainMidgard().lookup("bitcoin", txid)
+    ok = link is not None and link.method == "api" and bool(link.dst_chain)
+    return CaseResult(
+        "BRIDGE-api", PASS if ok else FAIL, "THORChain Midgard api-tier live lookup",
+        expected="src txid -> dst pair via the bridge explorer",
+        actual=(
+            f"{link.src_chain} -> {link.dst_chain}:{(link.dst_txid or '')[:14]} "
+            f"bridge={link.bridge} conf={link.confidence}" if link else "no link returned"
+        ),
+    )
+
+
 def cases_cd() -> list[CaseResult]:
-    c = [
-        ("C1", "BTC->ETH RenBTC bridge: bc1qr5kg... -> 0xd3f04ce2d37b182432e2f804f9913a02071cea54"),
+    skips = [
         ("C2", "ETH RENBTC -> WBTC/DAI/USDD hops + BitTorrent ETH->TRON bridge"),
         ("C3", "TRON USDD landing: TMhCFSbdwX8cTC5bg4Q3iAKchH7YWpj9nz"),
     ]
     out = [
         CaseResult(cid, SKIP, "cross-chain matching",
-                   actual="Phase 4 (cross-chain) not built", detail=[note])
-        for cid, note in c
+                   actual="multi-swap asset tracing / TRON connector not built", detail=[note])
+        for cid, note in skips
     ]
     out.append(CaseResult(
         "D", SKIP, "TRM-proprietary / ML signatures + private attribution",
@@ -381,6 +422,8 @@ def run_all() -> list[CaseResult]:
         _safe("B1", case_b1),
         _safe("B1-math", lambda: case_b1_diagnostic(btc)),
     ]
+    results.append(_safe("C1", case_c1))
+    results.append(_safe("BRIDGE-api", case_bridge_api))
     results += cases_cd()
     results += [
         _safe("E1", lambda: case_e1(evm)),

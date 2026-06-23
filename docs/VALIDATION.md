@@ -47,19 +47,25 @@ _exposure ring-math sanity check (NOT a course verdict)_
 - actual:   seeded bc1q32ugkkd6kgf0d249je0uddzxyferyx20wgnl80 = 96% of 1-hop outflow; ring.direct_value=8000457900; math=OK
 - Seeds an arbitrary label only to check compute_exposure's arithmetic; this does NOT confirm the course's exchange-exposure finding.
 
-### C1 — SKIP
-_cross-chain matching_
-- actual:   Phase 4 (cross-chain) not built
-- BTC->ETH RenBTC bridge: bc1qr5kg... -> 0xd3f04ce2d37b182432e2f804f9913a02071cea54
+### C1 — PASS
+_BTC->ETH RenBTC inferred cross-chain match_
+- expected: asset-equiv (BTC=RENBTC), 53.5~53.39 within fee tol, in window -> inferred link
+- actual:   band=Moderate rel_delta=0.002056 time_delta_s=3600 bridge=None
+- scored on CASES.md ground-truth amounts; Ren bridge is defunct / not in KNOWN_BRIDGES, so Moderate (not High) is the honest band
+
+### BRIDGE-api — PASS
+_THORChain Midgard api-tier live lookup_
+- expected: src txid -> dst pair via the bridge explorer
+- actual:   bitcoin -> ethereum:0x8c7af3e6e1b1 bridge=thorchain conf=Near Certainty
 
 ### C2 — SKIP
 _cross-chain matching_
-- actual:   Phase 4 (cross-chain) not built
+- actual:   multi-swap asset tracing / TRON connector not built
 - ETH RENBTC -> WBTC/DAI/USDD hops + BitTorrent ETH->TRON bridge
 
 ### C3 — SKIP
 _cross-chain matching_
-- actual:   Phase 4 (cross-chain) not built
+- actual:   multi-swap asset tracing / TRON connector not built
 - TRON USDD landing: TMhCFSbdwX8cTC5bg4Q3iAKchH7YWpj9nz
 
 ### D — SKIP
@@ -83,8 +89,8 @@ _EVM label-normalization regression_
 - DB round-trip covered by tests/test_labels_integration.py::test_e3_evm_checksummed_label_matches_lowercased_lookup
 
 ## Summary (graded verdicts)
-- PASS: 7
+- PASS: 9
 - FAIL: 0
 - COVERAGE-MISS: 1
-- SKIP: 4
+- SKIP: 3
 - ERROR: 0
