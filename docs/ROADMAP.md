@@ -239,6 +239,23 @@ presentation copy); dust/poisoning filter; court export (raw on-chain only).
 Visualizer / Breadcrumbs — seed -> triage -> expand node by node -> exposure
 rings + transfer table -> save/load per case. See ARCHITECTURE.md "Interface plan".
 
+**Progress:**
+- *Slice 1 — FastAPI query-layer backbone — done.* New `chainhound_server/`
+  platform package (the dependency arrow points one way: it imports `chainhound`,
+  never the reverse). A stateless query API wraps the engine's read operations —
+  `GET /health`, `/triage`, `/trace` (UTXO-only; account-model → 422), `/peel`,
+  `/exposure` (503 without the label corpus), `/labels`, and `POST /crosschain`
+  (api + inferred). Provider/label resolution is injected via FastAPI dependency
+  factories so routes are offline-testable with fake providers
+  (`tests/server/test_routes.py`). Boots with `python -m chainhound_server`
+  (uvicorn). Packaging: `server` extra + `chainhound-server` script.
+- *Decisions locked for later slices:* UI = Cytoscape.js; frontend = vanilla JS
+  static files served by FastAPI (no Node build step).
+- *Remaining:* case persistence (`investigation`/`graph_element`/`case_note`
+  CRUD), the Cytoscape investigation canvas, watched-address detectors + alerts
+  (`watch`/`alert`), graph hygiene (color/notes/hide-infra/dust filter), and court
+  export (raw on-chain only).
+
 ## Phase 6 — ML augmentation  *(DEFERRED — own project, needs research)*
 Advisory, confidence-scored signal layered on the deterministic engine, never a
 replacement. Candidates: entity-type classification of unlabeled clusters,
