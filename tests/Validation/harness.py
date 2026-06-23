@@ -159,7 +159,8 @@ def case_a3(btc) -> CaseResult:
     get_tx = _memo(btc.get_transaction)
     chain = trace_peel_chain(tx.txid, get_tx, btc.get_spending_tx, max_hops=60)
     hop_addrs: list[tuple] = []
-    hit = None
+    hit_val = None
+    via = None
     for h in chain.hops:
         htx = get_tx(h.txid)
         caddr = (
@@ -169,19 +170,27 @@ def case_a3(btc) -> CaseResult:
         )
         hop_addrs.append((caddr, h.change_value))
         if caddr == A3_TERMINAL:
-            hit = h
+            hit_val, via = h.change_value, "peel-hop change"
+    co = chain.cash_out
+    # the cash-out is the destination of the trailing full-balance sweep
+    if hit_val is None and co is not None and co.address == A3_TERMINAL:
+        hit_val, via = co.value, "post-peel sweep"
     term_addr, term_val = hop_addrs[-1] if hop_addrs else (None, 0)
-    within = hit is not None and abs(hit.change_value - A3_TERMINAL_SATS) <= A3_TOLERANCE_SATS
+    within = hit_val is not None and abs(hit_val - A3_TERMINAL_SATS) <= A3_TOLERANCE_SATS
     ok = chain.is_peel_chain and within
+    co_str = f"{co.address} ({co.value / BTC_REPORT:.2f} BTC)" if co else "None"
     return CaseResult(
-        "A3", PASS if ok else FAIL, "peel-chain detection",
+        "A3", PASS if ok else FAIL, "peel-chain detection (+ cash-out sweep)",
         expected=f"peel reaches {A3_TERMINAL} with 53.5 BTC +/- 1",
         actual=(
             f"is_peel_chain={chain.is_peel_chain} hops={chain.length} "
-            f"terminal={term_addr} ({term_val / BTC_REPORT:.2f} BTC) "
-            f"target_hit={'%.2f BTC' % (hit.change_value / BTC_REPORT) if hit else 'no'}"
+            f"peel_terminal={term_addr} ({term_val / BTC_REPORT:.2f} BTC) "
+            f"cash_out={co_str}"
         ),
-        detail=[f"start txid={tx.txid}"],
+        detail=[
+            f"start txid={tx.txid}",
+            f"target reached via {via}" if via else "target not reached",
+        ],
     )
 
 
