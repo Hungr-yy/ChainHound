@@ -18,6 +18,9 @@ CONTRACT = "0xdac17f958d2ee523a2206206994597c13d831ec7"
 CP_IN = "0xa9801117912b5849867378dabe8e12c725f7bf28"
 CP_OUT = "0x1111111111111111111111111111111111111111"
 FAIL_TO = "0x2222222222222222222222222222222222222222"
+TOKEN_SENDER = "0x12e0e83c42502668eac983b9933b81b3d20ab840"
+USDC_RECIP = "0x3333333333333333333333333333333333333333"
+NFT_SENDER = "0x4444444444444444444444444444444444444444"
 ONE_ETH = 1_000_000_000_000_000_000
 
 
@@ -37,6 +40,10 @@ def _transport(fix):
             return fix["getcode_contract"] if is_contract else fix["getcode_eoa"]
         if action == "eth_getTransactionByHash":
             return fix["gettx"]
+        if action == "tokentx":
+            return fix["tokentx"]
+        if action == "tokennfttx":
+            return fix["tokennfttx"]
         raise AssertionError(f"unexpected action {action!r}")
 
     return t
@@ -47,16 +54,43 @@ def _provider():
 
 
 def test_get_address_transactions_skips_failed_and_normalizes_native():
-    txs = _provider().get_address_transactions(SEED)
-    # the isError=1 row is dropped; two successful transfers remain
-    assert len(txs) == 2
-    by_to = {t.outputs[0].address: t for t in txs}
+    # native transfers are tagged asset "ETH"; the isError=1 row is dropped
+    natives = [
+        t for t in _provider().get_address_transactions(SEED)
+        if t.outputs and t.outputs[0].asset == "ETH"
+    ]
+    assert len(natives) == 2
+    by_to = {t.outputs[0].address: t for t in natives}
     assert FAIL_TO not in by_to
     out = by_to[CP_OUT]
     assert out.chain == "ethereum"
     assert out.inputs[0].address == SEED
     assert out.outputs[0].value == 500_000_000_000_000_000
-    assert out.inputs[0].value == 500_000_000_000_000_000
+
+
+def test_token_transfers_normalize_with_asset():
+    by_asset = {}
+    for t in _provider().get_address_transactions(SEED):
+        by_asset.setdefault(t.outputs[0].asset, []).append(t)
+    assert {"MOODENG", "USDC", "BAYC"} <= set(by_asset)
+    moo = by_asset["MOODENG"][0]                 # ERC-20 inbound
+    assert moo.inputs[0].address == TOKEN_SENDER
+    assert moo.outputs[0].address == SEED
+    assert moo.outputs[0].value == 8_888_000_000_000
+    assert by_asset["BAYC"][0].outputs[0].value == 1   # one NFT, not a divisible value
+
+
+def test_evm_exposure_rings_separate_native_and_token():
+    def lookup(chain, address):
+        if address in (CP_OUT, USDC_RECIP):
+            return [Label(chain, address, "Sink", "exchange", "tagpack", "High")]
+        return []
+
+    rep = compute_exposure(_provider(), "ethereum", SEED, label_lookup=lookup,
+                           hops=1, direction="out", max_fanout=10000)
+    rings = {(r.category, r.direction, r.asset): r for r in rep.rings}
+    assert rings[("exchange", "out", "ETH")].direct_value == 500_000_000_000_000_000
+    assert rings[("exchange", "out", "USDC")].direct_value == 1_000_000
 
 
 def test_address_summary_balance_type_and_value_sums():

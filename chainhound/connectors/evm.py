@@ -38,6 +38,10 @@ _CHAIN_NAMES = {
     43114: "avalanche",
 }
 
+# chain_id -> native currency symbol (the `asset` tag for native value transfers).
+_NATIVE_SYMBOL = {1: "ETH", 10: "ETH", 8453: "ETH", 42161: "ETH",
+                  56: "BNB", 137: "POL", 43114: "AVAX"}
+
 
 def _routescan_url(chain_id: int) -> str:
     return f"https://api.routescan.io/v2/network/mainnet/evm/{chain_id}/etherscan/api"
@@ -71,6 +75,7 @@ class EvmProvider(Provider):
         self.base_url = base_url or _routescan_url(chain_id)
         self.api_key = api_key
         self.chain = chain or _CHAIN_NAMES.get(chain_id, f"evm-{chain_id}")
+        self.native_symbol = _NATIVE_SYMBOL.get(chain_id, "ETH")
         self.timeout = timeout
         self._transport = transport  # injectable for offline tests
         # Etherscan V2 selects the chain by query param; Routescan/Blockscout by path.
@@ -130,10 +135,39 @@ class EvmProvider(Provider):
             txid=row.get("hash", ""),
             chain=self.chain,
             timestamp=int(row.get("timeStamp", "0")),
-            inputs=[TxIO(address=frm, value=value, address_type=AddressType.UNKNOWN)],
-            outputs=[TxIO(address=to, value=value, address_type=AddressType.UNKNOWN)],
+            inputs=[TxIO(address=frm, value=value, asset=self.native_symbol)],
+            outputs=[TxIO(address=to, value=value, asset=self.native_symbol)],
             fee=fee,
         )
+
+    def _to_token_tx(self, row: dict, *, nft: bool) -> Optional[Transaction]:
+        """One ERC-20/721 transfer -> a transfer-grained Transaction tagged with
+        the token as ``asset`` (one transfer per Transaction so exposure never
+        cross-links independent transfers inside the same on-chain tx)."""
+        to = (row.get("to") or "").lower()
+        frm = (row.get("from") or "").lower()
+        if not to or not frm:
+            return None
+        asset = row.get("tokenSymbol") or row.get("contractAddress") or "TOKEN"
+        # ERC-721 rows carry a tokenID, not a divisible value; count one unit.
+        value = 1 if nft else int(row.get("value", "0"))
+        return Transaction(
+            txid=row.get("hash", ""),
+            chain=self.chain,
+            timestamp=int(row.get("timeStamp", "0")),
+            inputs=[TxIO(address=frm, value=value, asset=asset)],
+            outputs=[TxIO(address=to, value=value, asset=asset)],
+        )
+
+    def _token_txs(self, address: str, limit: int) -> list[Transaction]:
+        out: list[Transaction] = []
+        for action, nft in (("tokentx", False), ("tokennfttx", True)):
+            rows = self._account(
+                {"action": action, "address": address, "page": 1,
+                 "offset": limit, "sort": "desc"}
+            ) or []
+            out.extend(t for t in (self._to_token_tx(r, nft=nft) for r in rows) if t)
+        return out
 
     def _txlist(self, address: str, limit: int) -> list:
         rows = self._account(
@@ -151,8 +185,8 @@ class EvmProvider(Provider):
 
     def get_address_transactions(self, address: str, limit: int = 50) -> list[Transaction]:
         address = address.lower()
-        txs = [self._to_native_tx(r) for r in self._txlist(address, limit)]
-        return [t for t in txs if t is not None]
+        native = [t for t in (self._to_native_tx(r) for r in self._txlist(address, limit)) if t]
+        return native + self._token_txs(address, limit)
 
     def get_address_summary(self, address: str) -> Optional[AddressSummary]:
         address = address.lower()
@@ -187,12 +221,12 @@ class EvmProvider(Provider):
         value = int(r.get("value", "0x0"), 16)
         ts_hex = r.get("blockTimestamp")
         timestamp = int(ts_hex, 16) if ts_hex else 0
-        outputs = [TxIO(address=to, value=value)] if to else []
+        outputs = [TxIO(address=to, value=value, asset=self.native_symbol)] if to else []
         return Transaction(
             txid=r.get("hash", txid),
             chain=self.chain,
             timestamp=timestamp,
-            inputs=[TxIO(address=frm, value=value)],
+            inputs=[TxIO(address=frm, value=value, asset=self.native_symbol)],
             outputs=outputs,
         )
 
