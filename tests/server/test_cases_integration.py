@@ -15,7 +15,8 @@ from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 import pytest
 
-from chainhound_server import store
+from chainhound.models import AddressSummary
+from chainhound_server import export, store
 
 pytest.importorskip("psycopg", reason="integration test needs psycopg")
 
@@ -103,3 +104,30 @@ def test_delete_case_cascades(db_url):
             "SELECT count(*) FROM graph_element WHERE case_id = %s", (cid,)
         ).fetchone()[0]
     assert notes == 0 and els == 0  # cascaded
+
+
+def test_court_export_over_real_case(db_url):
+    # Real store.get_case (elements + notes) -> gather -> build; provider is a
+    # fake so the test stays hermetic except for Postgres.
+    case = store.create_case(db_url, "Export Case")
+    cid = case["case_id"]
+    store.save_element(db_url, cid, "bc1qfoo", color="red", note="suspect")
+    store.add_note(db_url, cid, chain="bitcoin", ref="bc1qfoo", body="seed")
+
+    class _P:
+        def get_address_summary(self, addr):
+            return AddressSummary(
+                address=addr,
+                chain="bitcoin",
+                balance=42,
+                labels=["OFAC SDN: X"],  # must be stripped from the export
+            )
+
+        def get_transaction(self, txid):
+            return None
+
+    bundle = export.court_export(db_url, cid, provider_for=lambda chain: _P())
+    assert bundle["court_export"]["case_name"] == "Export Case"
+    assert len(bundle["addresses"]) == 1
+    assert bundle["addresses"][0]["balance"] == 42
+    assert "labels" not in bundle["addresses"][0]  # no attribution in court export
