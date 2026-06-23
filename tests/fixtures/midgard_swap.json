@@ -1,0 +1,39 @@
+{
+  "actions": [
+    {
+      "date": "1782199821003278759",
+      "height": "26705094",
+      "status": "success",
+      "type": "swap",
+      "pools": [
+        "BTC.BTC",
+        "ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48"
+      ],
+      "in": [
+        {
+          "txID": "CE396D8FBC19B962D03DC09E693909A5C1E36B30747AD036AA061ED44029AB3C",
+          "address": "bc1q4r4nuwjm5c7qhgf6fll24xcdw2fj2m20sf6dfz",
+          "coins": [
+            {"amount": "1440363", "asset": "BTC.BTC"}
+          ]
+        }
+      ],
+      "out": [
+        {
+          "txID": "",
+          "address": "thor1dl7un46w7l7f3ewrnrm6nq58nerjtp0dradjtd",
+          "coins": [
+            {"amount": "1605132700", "asset": "THOR.RUNE"}
+          ]
+        },
+        {
+          "txID": "8C7AF3E6E1B1742B8B9420550A2DBFA4B93505EFB153861AC0A33BC2529D58BC",
+          "address": "0x4fda886501abfe60c4f49184a836282a177916c7",
+          "coins": [
+            {"amount": "89653033500", "asset": "ETH.USDC-0XA0B86991C6218B36C1D19D4A2E9EB0CE3606EB48"}
+          ]
+        }
+      ]
+    }
+  ]
+}
