@@ -259,11 +259,22 @@ rings + transfer table -> save/load per case. See ARCHITECTURE.md "Interface pla
   `get_connect` dependency, so everything is offline-testable (scripted fake
   connection) with a DB-gated live round-trip
   (`tests/server/test_cases_integration.py`).
-- *Decisions locked for later slices:* UI = Cytoscape.js; frontend = vanilla JS
-  static files served by FastAPI (no Node build step).
-- *Remaining:* the Cytoscape investigation canvas, watched-address detectors +
-  alerts (`watch`/`alert`), graph hygiene UX (hide-infra/dust filter), and court
-  export (raw on-chain only).
+- *Slice 3 — Cytoscape investigation canvas — done.* A vanilla-JS single-page app
+  (`chainhound_server/static/`, Cytoscape.js via CDN, no build step) served at `/`
+  with assets under `/static` (mounted so they never shadow API routes). The
+  analyst flow over the existing endpoints: search a seed txid → `/trace` plots
+  the graph (tx vs address nodes; change edges colored by confidence band, payment
+  edges dashed); click an address → `/triage` panel + `/exposure` rings; click a
+  tx → `/peel`; double-click a tx → trace deeper. Graph hygiene (color / hide /
+  note) is editable per element and persists via the Slice-2 `/cases` save/load
+  (New/Save/Load + case picker). Transfer table with find-in-table. Backend
+  serving is tested (`tests/server/test_static.py`); the JS is a thin client over
+  tested endpoints.
+- *Decisions locked / used:* UI = Cytoscape.js; frontend = vanilla JS static files
+  served by FastAPI (no Node build step).
+- *Remaining:* watched-address detectors + alerts (`watch`/`alert` — deferred by
+  request), richer graph-hygiene UX (auto hide-infra / dust-poisoning filter), and
+  court export (raw on-chain only).
 
 ## Phase 6 — ML augmentation  *(DEFERRED — own project, needs research)*
 Advisory, confidence-scored signal layered on the deterministic engine, never a
