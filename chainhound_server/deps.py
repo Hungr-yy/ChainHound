@@ -72,3 +72,11 @@ def get_provider_factory() -> ProviderFactory:
 
 def get_label_lookup_factory() -> Callable[[config.Config], Optional[LabelLookup]]:
     return label_lookup_for
+
+
+def get_connect() -> Callable:
+    """The psycopg connect callable used by the case store. Overridden in tests
+    to inject a fake connection (no live Postgres)."""
+    from chainhound import db
+
+    return db.connect

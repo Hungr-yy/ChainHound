@@ -29,3 +29,27 @@ class CrossChainRequest(BaseModel):
     )
     dst_chain: Optional[str] = None
     dst_address: Optional[str] = None
+
+
+class CaseCreate(BaseModel):
+    """Create an investigation case."""
+
+    name: str = Field(..., min_length=1)
+
+
+class NoteCreate(BaseModel):
+    """Pin a note to a case. ``chain``/``ref`` optionally anchor it to an
+    address or txid."""
+
+    body: str = Field(..., min_length=1)
+    chain: Optional[str] = None
+    ref: Optional[str] = None
+
+
+class ElementSave(BaseModel):
+    """Per-element graph-hygiene state (save working/presentation copy)."""
+
+    element_id: str = Field(..., min_length=1)
+    color: Optional[str] = None
+    hidden: bool = False
+    note: Optional[str] = None
