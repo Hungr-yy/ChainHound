@@ -283,10 +283,20 @@ rings + transfer table -> save/load per case. See ARCHITECTURE.md "Interface pla
   gained a **Watch** button on the address panel. Offline-tested end to end
   (detectors, run glue, routes, one poller tick) with a DB-gated integration test
   (`tests/server/test_monitor_integration.py`).
+- *Slice 5 — court export (raw on-chain only) — done.*
+  `chainhound_server/export.py` builds the evidentiary bundle for a case: it
+  gathers every on-chain reference (graph elements classified by format + pinned
+  notes), fetches the raw `Transaction`/`AddressSummary` for each via an engine
+  provider, and assembles a JSON bundle. It **excludes all attribution** — drops
+  `AddressSummary.labels` and carries no clusters, change/peel/exposure verdicts,
+  confidence-banded inferences, cross-chain inferences, or analyst colors/notes —
+  so the package is independently verifiable against the public ledger. Served at
+  `GET /cases/{id}/export` (attachment download; 404/503), with an **Export**
+  button on the canvas. Pure assembly is split from chain I/O and offline-tested
+  (`tests/server/test_export.py`) with a DB-gated round-trip over a real case.
 - *Decisions locked / used:* UI = Cytoscape.js; frontend = vanilla JS static files
   served by FastAPI (no Node build step).
-- *Remaining:* richer graph-hygiene UX (auto hide-infra / dust-poisoning filter)
-  and court export (raw on-chain only).
+- *Remaining:* richer graph-hygiene UX (auto hide-infra / dust-poisoning filter).
 
 ## Phase 6 — ML augmentation  *(DEFERRED — own project, needs research)*
 Advisory, confidence-scored signal layered on the deterministic engine, never a
