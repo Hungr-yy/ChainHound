@@ -191,6 +191,14 @@ and per-address point lookups are the wrong pattern for a warehouse).
   Sourcify's keyless 4byte service (selector→signature, prefers verified-contract
   matches over spam); `Transaction.method` is populated free from the explorer's
   `functionName`. Full ABI argument decoding (needs a keccak dep) is deferred.
+- *Address-casing fix (2026-06-23).* EVM labels were attributed only when stored
+  lowercase: the connector lowercases addresses but TagPack/dump labels are stored
+  as-published (often checksummed), so an exact `WHERE address` lookup silently
+  missed them (OFAC ETH is lowercase, so the SECONDEYE proof was unaffected — but
+  checksummed EVM labels were dropped). Fixed with a chain-aware
+  `models.normalize_address` applied on label **write and lookup** (and the cache
+  key): EVM hex → lowercase, base58/bech32 (BTC, **Tron**) untouched. **EVM
+  attribution is only clean as of this change.** Tier-E3 round-trip on Postgres.
 - *Phase 3 status:* slices 1–4 complete and tested; the keyless Routescan default
   + exposure-on-EVM are live-proven. Remaining for the phase: the account-model
   forward-trace guard's full implementation, ABI arg decoding, and the opt-in
