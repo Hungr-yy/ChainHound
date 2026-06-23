@@ -60,7 +60,7 @@ class _StaticSource(LabelSource):
         return self._labels
 
 
-def test_sync_deletes_by_source_then_inserts_in_one_txn():
+def test_sync_upserts_in_one_txn():
     labels = [
         Label("bitcoin", "1AAA", "OFAC SDN: X", "sanctioned", "ofac", "Near Certainty"),
         Label("ethereum", "0xbbb", "OFAC SDN: X", "sanctioned", "ofac", "Near Certainty"),
@@ -71,22 +71,34 @@ def test_sync_deletes_by_source_then_inserts_in_one_txn():
 
     assert n == 2
     cur = conn.cursor_obj
-    # First statement clears the source's existing rows (idempotent re-pull).
-    assert cur.calls[0][0].startswith("DELETE FROM label")
-    assert cur.calls[0][1] == ("ofac",)
-    # Then a single bulk insert of all labels.
+    # No delete-by-source: rows are upserted on the partial unique index.
+    assert all("DELETE" not in sql for sql, _ in cur.calls)
     assert len(cur.many) == 1
-    assert len(cur.many[0][1]) == 2
+    sql, rows = cur.many[0]
+    assert "ON CONFLICT" in sql and "DO UPDATE" in sql
+    assert len(rows) == 2
     assert conn.committed
 
 
-def test_sync_with_no_labels_still_clears_source():
+def test_sync_skips_address_less_labels():
+    labels = [
+        Label("bitcoin", "1AAA", "OFAC SDN: X", "sanctioned", "ofac", "Near Certainty"),
+        Label("bitcoin", None, "cluster only", "x", "ofac", "High"),  # partial-index exempt
+    ]
+    conn = _FakeConn()
+    n = store.sync("postgresql://x", _StaticSource(labels), text="<ignored/>",
+                   connect=lambda _url: conn)
+    assert n == 1
+    assert len(conn.cursor_obj.many[0][1]) == 1
+
+
+def test_sync_with_no_labels_writes_nothing():
     conn = _FakeConn()
     n = store.sync("postgresql://x", _StaticSource([]), text="<empty/>",
                    connect=lambda _url: conn)
     assert n == 0
-    assert conn.cursor_obj.calls[0][0].startswith("DELETE FROM label")
-    assert conn.cursor_obj.many == []   # nothing to insert
+    assert conn.cursor_obj.calls == []   # no delete
+    assert conn.cursor_obj.many == []    # no insert
 
 
 def test_lookup_filters_on_chain_and_address():

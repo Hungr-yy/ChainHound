@@ -1,8 +1,9 @@
 """Persist and query labels in the Postgres ``label`` table.
 
-Bulk sources refresh idempotently: each ``sync`` deletes the source's existing
-rows and re-inserts the current set in one transaction, so re-pulls dedup
-without a unique constraint or migration. ``connect`` is injectable for offline
+Bulk sources refresh idempotently via an ``ON CONFLICT`` upsert on the partial
+unique index ``uq_label_addr_source_name`` — a re-pull updates a label in place
+and bumps ``updated_at`` instead of piling up duplicates, and partial syncs of a
+source merge rather than clearing it. ``connect`` is injectable for offline
 tests.
 """
 from __future__ import annotations
@@ -12,14 +13,28 @@ from typing import Callable, Optional
 from .. import db
 from .base import Label, LabelSource
 
-_INSERT = (
+# Upsert on the partial unique index (chain, address, source, name). Address-less
+# (cluster-only) labels are skipped by callers since the index is partial.
+_UPSERT = (
     "INSERT INTO label (chain, address, name, category, source, confidence) "
-    "VALUES (%s, %s, %s, %s, %s, %s)"
+    "VALUES (%s, %s, %s, %s, %s, %s) "
+    "ON CONFLICT (chain, address, source, name) WHERE address IS NOT NULL "
+    "DO UPDATE SET category = EXCLUDED.category, "
+    "confidence = EXCLUDED.confidence, updated_at = now()"
 )
 _SELECT = (
     "SELECT chain, address, name, category, source, confidence "
     "FROM label WHERE chain = %s AND address = %s"
 )
+
+
+def _rows(labels: list[Label]) -> list[tuple]:
+    """Upsert parameter tuples for address-scoped labels (partial-index safe)."""
+    return [
+        (l.chain, l.address, l.name, l.category, l.source, l.confidence)
+        for l in labels
+        if l.address
+    ]
 
 
 def sync(
@@ -32,22 +47,18 @@ def sync(
     """Refresh all labels for ``source``; return the number written.
 
     ``text`` lets the caller supply an already-fetched document (offline/cron);
-    otherwise the source loads itself (a single fetch, or a corpus walk).
+    otherwise the source loads itself (a single fetch, or a corpus walk). Rows
+    are upserted, so a re-pull dedups in place; labels dropped upstream are not
+    pruned (run a fresh DB, or add a prune step, if exact removal is needed).
     """
     labels = source.parse(text) if text is not None else source.load()
+    rows = _rows(labels)
     with connect(database_url) as conn:
         with conn.cursor() as cur:
-            cur.execute("DELETE FROM label WHERE source = %s", (source.source,))
-            if labels:
-                cur.executemany(
-                    _INSERT,
-                    [
-                        (l.chain, l.address, l.name, l.category, l.source, l.confidence)
-                        for l in labels
-                    ],
-                )
+            if rows:
+                cur.executemany(_UPSERT, rows)
         conn.commit()
-    return len(labels)
+    return len(rows)
 
 
 def lookup(
@@ -123,18 +134,15 @@ def replace_address(
     connect: Callable = db.connect,
 ) -> None:
     """Replace this source's labels for one address (idempotent per re-check)."""
+    rows = _rows(labels)
     with connect(database_url) as conn:
         with conn.cursor() as cur:
+            # Clear first so labels dropped for this address are removed, then
+            # upsert the current set (tolerates duplicate keys within the set).
             cur.execute(
                 "DELETE FROM label WHERE source = %s AND chain = %s AND address = %s",
                 (source, chain, address),
             )
-            if labels:
-                cur.executemany(
-                    _INSERT,
-                    [
-                        (l.chain, l.address, l.name, l.category, l.source, l.confidence)
-                        for l in labels
-                    ],
-                )
+            if rows:
+                cur.executemany(_UPSERT, rows)
         conn.commit()

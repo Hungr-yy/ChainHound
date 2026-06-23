@@ -82,6 +82,14 @@ CREATE TABLE IF NOT EXISTS label (
 );
 CREATE INDEX IF NOT EXISTS idx_label_addr ON label (chain, address);
 
+-- Idempotent-upsert key for re-syncs: a source re-pull refreshes a label in
+-- place instead of piling up duplicates. Partial — cluster-only labels
+-- (address IS NULL) are exempt.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_label_addr_source_name
+    ON label (chain, address, source, name) WHERE address IS NOT NULL;
+-- Bumped on every re-sync so a label's last-seen-from-source is auditable.
+ALTER TABLE label ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT now();
+
 -- Cache of raw on-demand/rate-limited API responses (Chainabuse, etc.) so
 -- repeated lookups of the same address never re-hit the upstream API.
 CREATE TABLE IF NOT EXISTS label_cache (

@@ -103,7 +103,7 @@ def test_attribution_loop_ofac_to_triage(db_url):
     # Bulk refresh from the committed fixture (hermetic; no network).
     n1 = store.sync(db_url, OFACSource(), text=_SAMPLE_SDN)
     assert n1 >= 1
-    # Re-pull is idempotent: delete-by-source keeps the count stable (no dupes).
+    # Re-pull is idempotent: the ON CONFLICT upsert refreshes in place (no dupes).
     n2 = store.sync(db_url, OFACSource(), text=_SAMPLE_SDN)
     assert n2 == n1
     assert _count_labels(db_url, "ofac") == n1
