@@ -142,6 +142,9 @@ CREATE TABLE IF NOT EXISTS graph_element (
     hidden      BOOLEAN DEFAULT FALSE,
     note        TEXT
 );
+-- One hygiene row per element per case, so save-state upserts in place.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_graph_element_case_el
+    ON graph_element (case_id, element_id);
 
 -- Monitoring: addresses under watch and fired detector alerts (Phase 5).
 CREATE TABLE IF NOT EXISTS watch (
