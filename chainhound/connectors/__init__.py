@@ -14,6 +14,9 @@ def get_provider(name: str, **kwargs) -> Provider:
     if name in ("bigquery", "bq"):
         from .bigquery_btc import BigQueryBTC
         return BigQueryBTC(**kwargs)
+    if name in ("ethereum", "eth", "evm"):
+        from .evm import EvmProvider
+        return EvmProvider(**kwargs)
     raise ValueError(f"unknown provider: {name!r}")
 
 
