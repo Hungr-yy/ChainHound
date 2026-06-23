@@ -249,11 +249,20 @@ rings + transfer table -> save/load per case. See ARCHITECTURE.md "Interface pla
   factories so routes are offline-testable with fake providers
   (`tests/server/test_routes.py`). Boots with `python -m chainhound_server`
   (uvicorn). Packaging: `server` extra + `chainhound-server` script.
+- *Slice 2 — case persistence (save/load) — done.* `chainhound_server/store.py`
+  + a `/cases` router: create/list/load/delete a case (`investigation`), pin
+  notes (`case_note`), and upsert per-element graph-hygiene state — color, hidden,
+  note (`graph_element`). `get_case` returns the full workspace (case + notes +
+  elements) — the "load". Hygiene rows upsert in place via a new
+  `UNIQUE (case_id, element_id)` index. The store builds on
+  `chainhound.db.connect` with an injectable `connect`; routes inject it via a
+  `get_connect` dependency, so everything is offline-testable (scripted fake
+  connection) with a DB-gated live round-trip
+  (`tests/server/test_cases_integration.py`).
 - *Decisions locked for later slices:* UI = Cytoscape.js; frontend = vanilla JS
   static files served by FastAPI (no Node build step).
-- *Remaining:* case persistence (`investigation`/`graph_element`/`case_note`
-  CRUD), the Cytoscape investigation canvas, watched-address detectors + alerts
-  (`watch`/`alert`), graph hygiene (color/notes/hide-infra/dust filter), and court
+- *Remaining:* the Cytoscape investigation canvas, watched-address detectors +
+  alerts (`watch`/`alert`), graph hygiene UX (hide-infra/dust filter), and court
   export (raw on-chain only).
 
 ## Phase 6 — ML augmentation  *(DEFERRED — own project, needs research)*
