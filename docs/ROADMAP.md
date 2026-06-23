@@ -150,22 +150,33 @@ and per-address point lookups are the wrong pattern for a warehouse).
   handles EIP-7702 delegation, and rate-limit/backoff reuse `labels/ondemand`
   (no new throttle code). Wired into `get_provider` (`ethereum`/`eth`/`evm`) +
   config (`CHAINHOUND_EVM_PROVIDER_URL`/`ETHERSCAN_KEY`/`EVM_CHAIN_ID`).
-  - **Model fit holds:** the offline `test_exposure_works_on_evm_with_zero_engine
-    _changes` proves `compute_exposure` runs on EVM-normalized data with **zero**
-    edits to `exposure.py` (the load-bearing acceptance). 6 offline normalization
-    tests from captured Routescan JSON; full suite 47 passed.
-  - *Live (2026-06-23):* `triage` on a real ETH address via keyless Routescan
-    returned a correct summary (EOA, balance, windowed tx_count, first/last seen).
-    A live *labeled* exposure ring on ETH was not staged — OFAC's ETH entries are
-    mostly high-activity Tornado Cash contracts and the synced GraphSense ETH tags
-    didn't intersect the sampled addresses' recent-tx windows (a label-coverage /
-    staging gap, not an engine issue; the identical code produced a real
-    `sanctioned` ring on the BTC HYDRA proof).
-- *Known limitation:* `get_address_transactions` reads the recent tx window
+  - **Exposure on EVM — proven by parts, not yet end-to-end live.** Confirmed:
+    (1) the offline `test_exposure_works_on_evm_with_zero_engine_changes` asserts a
+    ring forms on EVM-shaped data with a labeled counterparty present, with **zero**
+    edits to `exposure.py`; (2) the *same* provider-agnostic code produced a real
+    `sanctioned` ring on BTC-live data (HYDRA). The one cell not yet executed is
+    **live EVM + a label actually intersecting in-bounds** — live `triage` works
+    (real Routescan: EOA, balance, windowed tx_count), and live `exposure` ran
+    clean but returned *unlabeled* rings on the sampled addresses. Not overclaimed
+    as "EVM live-proven with labels."
+  - **BTC↔EVM sanctions asymmetry (matters for Phase 4 + demos).** An OFAC *ETH*
+    ring is structurally harder to stage than an OFAC *BTC* one: OFAC's ETH set is
+    dominated by **Tornado Cash contracts** — extremely high-activity — which
+    collide with *both* the 2b high-fan-out bound (capped by design) and the
+    explorer's recent-tx window, so even a real touch can fall out of view. BTC's
+    sanctioned set is discrete deposit addresses; EVM's is mixers with millions of
+    interactions.
+  - **Seeded-proof recipe (one targeted call, when worth closing):** don't random-
+    sample — take a known-sanctioned ETH address (a Tornado Cash contract is fine),
+    find one address with a *direct, in-window* transfer to it, and run `exposure`
+    on that. Deterministically stages the labeled ring in a single lookup.
+- *Known limitations:* `get_address_transactions` reads the recent tx window
   (explorer pagination), and `tx_count`/`first_seen` are over that window — same
-  shape as the BTC connector. `trace_from_tx`'s change-trail is UTXO-specific;
-  meaningful EVM forward-trace needs the small account-model guard noted in the
-  plan (deferred).
+  shape as the BTC connector. `trace_from_tx` is UTXO-specific; on an account-model
+  provider it now **raises `NotImplementedError`** (fails loud rather than
+  returning a quietly-wrong change-trail graph). The full account-model forward
+  trace is deferred. (`peel` is UTXO-only too but fails safe — `get_spending_tx`
+  returns `None` on EVM, so it finds no chain rather than misleading.)
 - *Next slices:* ERC-20/721 (+ `asset` on `TxIO`, per-asset rings) → internal
   txns/traces → Sourcify/4byte contract decoding.
 
