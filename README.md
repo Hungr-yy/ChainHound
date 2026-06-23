@@ -12,7 +12,7 @@ advisory ML layer.
 ## Quick start
 
 ```bash
-pip install -e ".[live,dev]"          # blockstream connector + tests
+pip install -e ".[live,labels,dev]"   # connectors + label loaders + tests
 python -m pytest -q                   # run the heuristic tests
 chainhound triage 3P91G6V8CurGLRtJgQmdNvkZ49s7GNMEcT
 chainhound trace <txid> --hops 2

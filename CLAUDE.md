@@ -29,7 +29,8 @@ ChainHound is a deterministic-first, open-source on-chain (blockchain) forensics
 
 ## Commands
 ```bash
-pip install -e ".[live,dev]"          # editable install + live & dev extras
+pip install -e ".[live,labels,dev]"   # connectors + label loaders + tests
+# add ,db for Postgres persistence and the DB integration test (psycopg)
 python -m pytest -q                    # run tests (use this form, not bare pytest)
 chainhound triage <address>            # or: python -m chainhound.cli triage <address>
 chainhound trace <txid> --hops 2
