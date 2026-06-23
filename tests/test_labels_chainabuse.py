@@ -36,10 +36,13 @@ def test_parses_one_label_per_category_with_provenance():
         assert l.address == "0xBAD"
 
 
-def test_trusted_report_lifts_confidence():
+def test_trusted_report_lifts_confidence_but_never_to_high():
+    # Community reports are the noisiest source: anonymous reports floor at Low,
+    # a vetted (trusted/checked) reporter lifts to Moderate -- never to High,
+    # which would put a scam report on par with an OFAC listing.
     by_name = {l.name: l for l in _parse(SAMPLE)}
-    assert by_name["Chainabuse: PHISHING"].confidence == "High"     # a trusted report
-    assert by_name["Chainabuse: RUG_PULL"].confidence == "Moderate"  # none trusted
+    assert by_name["Chainabuse: PHISHING"].confidence == "Moderate"  # a trusted report
+    assert by_name["Chainabuse: RUG_PULL"].confidence == "Low"       # none trusted
 
 
 def test_no_reports_yields_no_labels():

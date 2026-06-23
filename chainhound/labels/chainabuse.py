@@ -70,7 +70,10 @@ class ChainabuseSource(OnDemandSource):
         else:
             reports = []
 
-        # One label per distinct scam category; trusted/checked lifts confidence.
+        # One label per distinct scam category. Community reports are the
+        # noisiest source, so they never reach High (which would rival an OFAC
+        # listing): anonymous reports floor at Low; a vetted (trusted/checked)
+        # reporter lifts to Moderate.
         trusted_by_category: dict[str, bool] = {}
         for r in reports:
             if not isinstance(r, dict):
@@ -86,7 +89,7 @@ class ChainabuseSource(OnDemandSource):
                 name=f"Chainabuse: {category}",
                 category="scam",
                 source=self.source,
-                confidence="High" if trusted else "Moderate",
+                confidence="Moderate" if trusted else "Low",
             )
             for category, trusted in trusted_by_category.items()
         ]
