@@ -21,6 +21,9 @@ from typing import Callable, Optional
 from chainhound.connectors import get_provider
 from chainhound.connectors.blockstream_btc import API as BTC_API, BlockstreamBTC
 from chainhound.analysis.triage import triage_address
+from chainhound.heuristics.change_analysis import analyze_change
+from chainhound.heuristics.peel_chain import trace_peel_chain
+from chainhound.heuristics.clustering import cluster_addresses
 
 # Verdicts
 PASS = "PASS"
@@ -84,6 +87,133 @@ def case_a1(btc) -> CaseResult:
     )
 
 
+def _memo(fn: Callable):
+    cache: dict = {}
+
+    def g(txid):
+        if txid not in cache:
+            cache[txid] = fn(txid)
+        return cache[txid]
+
+    return g
+
+
+def first_significant_spend(btc):
+    """Pin the origin's first significant outbound spend — the tx the course plots.
+
+    Outbound = origin appears as an input; significant = above the dust floor;
+    first = earliest by timestamp. The caller prints the chosen txid so it can be
+    verified (a wrong pin makes an A2/A3 verdict meaningless).
+    """
+    txs = btc.get_address_transactions(ORIGIN, limit=50)
+    spends = [
+        t for t in txs if ORIGIN in t.input_addresses and t.total_out >= DUST_SATS
+    ]
+    if not spends:
+        return None
+    spends.sort(key=lambda t: t.timestamp)
+    return spends[0]
+
+
+def case_a2(btc) -> CaseResult:
+    tx = first_significant_spend(btc)
+    if tx is None:
+        return CaseResult("A2", ERROR, "no significant outbound spend from origin")
+    v = analyze_change(tx)
+    if v.output_index is None:
+        return CaseResult(
+            "A2", FAIL, "change identification (the core heuristic)",
+            expected=f"predicted change starts {A2_PREFIX} & ends {A2_SUFFIX}, band >= High",
+            actual="no change output predicted",
+            detail=[f"pinned txid={tx.txid}"],
+        )
+    addr = tx.outputs[v.output_index].address or ""
+    ok = (
+        addr.startswith(A2_PREFIX)
+        and addr.endswith(A2_SUFFIX)
+        and v.band in ("High", "Near Certainty")
+    )
+    sigs = "; ".join(
+        f"{s.heuristic}@{s.weight}->out{s.output_index}" for s in v.signals
+    ) or "none"
+    return CaseResult(
+        "A2", PASS if ok else FAIL, "change identification (the core heuristic)",
+        expected=f"predicted change starts {A2_PREFIX} & ends {A2_SUFFIX}, band >= High",
+        actual=f"predicted={addr} band={v.band} score={v.score:.3f}",
+        detail=[f"pinned txid={tx.txid}", f"signals: {sigs}"],
+    )
+
+
+def case_a3(btc) -> CaseResult:
+    tx = first_significant_spend(btc)
+    if tx is None:
+        return CaseResult("A3", ERROR, "no significant outbound spend from origin")
+    get_tx = _memo(btc.get_transaction)
+    chain = trace_peel_chain(tx.txid, get_tx, btc.get_spending_tx, max_hops=60)
+    hop_addrs: list[tuple] = []
+    hit = None
+    for h in chain.hops:
+        htx = get_tx(h.txid)
+        caddr = (
+            htx.outputs[h.change_index].address
+            if htx and h.change_index < len(htx.outputs)
+            else None
+        )
+        hop_addrs.append((caddr, h.change_value))
+        if caddr == A3_TERMINAL:
+            hit = h
+    term_addr, term_val = hop_addrs[-1] if hop_addrs else (None, 0)
+    within = hit is not None and abs(hit.change_value - A3_TERMINAL_SATS) <= A3_TOLERANCE_SATS
+    ok = chain.is_peel_chain and within
+    return CaseResult(
+        "A3", PASS if ok else FAIL, "peel-chain detection",
+        expected=f"peel reaches {A3_TERMINAL} with 53.5 BTC +/- 1",
+        actual=(
+            f"is_peel_chain={chain.is_peel_chain} hops={chain.length} "
+            f"terminal={term_addr} ({term_val / BTC_REPORT:.2f} BTC) "
+            f"target_hit={'%.2f BTC' % (hit.change_value / BTC_REPORT) if hit else 'no'}"
+        ),
+        detail=[f"start txid={tx.txid}"],
+    )
+
+
+def case_a4(btc) -> CaseResult:
+    tx = first_significant_spend(btc)
+    if tx is None:
+        return CaseResult("A4", ERROR, "no significant outbound spend from origin")
+    get_tx = _memo(btc.get_transaction)
+    chain = trace_peel_chain(tx.txid, get_tx, btc.get_spending_tx, max_hops=60)
+    hop_txs = [t for t in (get_tx(h.txid) for h in chain.hops) if t]
+    peel_addrs = []
+    for h in chain.hops:
+        htx = get_tx(h.txid)
+        if htx and h.change_index < len(htx.outputs) and htx.outputs[h.change_index].address:
+            peel_addrs.append(htx.outputs[h.change_index].address)
+    if len(peel_addrs) < 2:
+        return CaseResult(
+            "A4", ERROR, "too few peel addresses to grade clustering",
+            detail=[f"peel_addrs={len(peel_addrs)}"],
+        )
+    res = cluster_addresses(hop_txs)
+    origin_cluster = res.cluster_of(ORIGIN)
+    terminal = peel_addrs[-1]
+    # STRICT: affirmatively confirm co-spend abstained — not merely that it ran.
+    merged_all = any(set(peel_addrs).issubset(c) for c in res.clusters.values())
+    terminal_with_origin = terminal in origin_cluster
+    ok = (not merged_all) and (not terminal_with_origin)
+    biggest = max((len(c) for c in res.clusters.values()), default=1)
+    return CaseResult(
+        "A4", PASS if ok else FAIL, "co-spend abstains (must NOT merge the peel)",
+        expected="peel hops left in separate co-spend clusters (abstention)",
+        actual=(
+            f"peel_addrs={len(peel_addrs)} clusters={len(res.clusters)} "
+            f"biggest_cluster={biggest} terminal_in_origin_cluster={terminal_with_origin} "
+            f"all_peel_merged={merged_all}"
+        ),
+        detail=[f"origin cluster size={len(origin_cluster)}"],
+    )
+
+
 # --- report ------------------------------------------------------------------
 
 def _endpoints() -> dict:
@@ -102,8 +232,12 @@ def _endpoints() -> dict:
 
 def run_all() -> list[CaseResult]:
     btc = BlockstreamBTC()
-    results = [_safe("A1", lambda: case_a1(btc))]
-    return results
+    return [
+        _safe("A1", lambda: case_a1(btc)),
+        _safe("A2", lambda: case_a2(btc)),
+        _safe("A3", lambda: case_a3(btc)),
+        _safe("A4", lambda: case_a4(btc)),
+    ]
 
 
 def render_report(results: list[CaseResult]) -> str:
