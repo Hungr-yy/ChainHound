@@ -150,26 +150,28 @@ and per-address point lookups are the wrong pattern for a warehouse).
   handles EIP-7702 delegation, and rate-limit/backoff reuse `labels/ondemand`
   (no new throttle code). Wired into `get_provider` (`ethereum`/`eth`/`evm`) +
   config (`CHAINHOUND_EVM_PROVIDER_URL`/`ETHERSCAN_KEY`/`EVM_CHAIN_ID`).
-  - **Exposure on EVM — proven by parts, not yet end-to-end live.** Confirmed:
-    (1) the offline `test_exposure_works_on_evm_with_zero_engine_changes` asserts a
-    ring forms on EVM-shaped data with a labeled counterparty present, with **zero**
-    edits to `exposure.py`; (2) the *same* provider-agnostic code produced a real
-    `sanctioned` ring on BTC-live data (HYDRA). The one cell not yet executed is
-    **live EVM + a label actually intersecting in-bounds** — live `triage` works
-    (real Routescan: EOA, balance, windowed tx_count), and live `exposure` ran
-    clean but returned *unlabeled* rings on the sampled addresses. Not overclaimed
-    as "EVM live-proven with labels."
+  - **Exposure on EVM — live-proven (2026-06-23).** All three legs confirmed:
+    (1) offline `test_exposure_works_on_evm_with_zero_engine_changes` (ring forms
+    on EVM-shaped data, **zero** edits to `exposure.py`); (2) the *same*
+    provider-agnostic code produced a real `sanctioned` ring on BTC (HYDRA); and
+    (3) **live EVM + label intersect** — `exposure` on `0x9369…` over live
+    Routescan + the OFAC corpus surfaced an outbound `sanctioned` ring:
+    `0x1da5821544e25c636c1417ba96ade4cf6d2f9b5a` = *OFAC SDN: SECONDEYE SOLUTION*,
+    0.1188 ETH, distance 1, Near Certainty (and a second TagPack tag on the same
+    address — multi-source, glass-box). Closed via the seeded recipe below.
   - **BTC↔EVM sanctions asymmetry (matters for Phase 4 + demos).** An OFAC *ETH*
-    ring is structurally harder to stage than an OFAC *BTC* one: OFAC's ETH set is
-    dominated by **Tornado Cash contracts** — extremely high-activity — which
-    collide with *both* the 2b high-fan-out bound (capped by design) and the
-    explorer's recent-tx window, so even a real touch can fall out of view. BTC's
-    sanctioned set is discrete deposit addresses; EVM's is mixers with millions of
-    interactions.
-  - **Seeded-proof recipe (one targeted call, when worth closing):** don't random-
-    sample — take a known-sanctioned ETH address (a Tornado Cash contract is fine),
-    find one address with a *direct, in-window* transfer to it, and run `exposure`
-    on that. Deterministically stages the labeled ring in a single lookup.
+    ring is structurally harder to stage than an OFAC *BTC* one: the ETH set is
+    heavy with **Tornado Cash contracts** (verified present in the current SDN —
+    *not* delisted, correcting an earlier assumption) that are extremely
+    high-activity, colliding with *both* the 2b high-fan-out bound and the
+    explorer's recent-tx window — so a real touch can fall out of view. The live
+    proof therefore landed on a discrete sanctioned entity (SECONDEYE), not a TC
+    pool. BTC's sanctioned set is discrete deposit addresses; EVM's skews to mixers
+    with millions of interactions.
+  - **Seeded-proof recipe (what closed it):** don't random-sample — take a labeled
+    ETH address, find one address with a *direct, in-window* transfer to it
+    (verify it sits within the explorer's recent window), and run `exposure` on
+    that. Deterministic in a couple of targeted lookups.
 - *Known limitations:* `get_address_transactions` reads the recent tx window
   (explorer pagination), and `tx_count`/`first_seen` are over that window — same
   shape as the BTC connector. `trace_from_tx` is UTXO-specific; on an account-model
